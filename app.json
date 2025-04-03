@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "Vocal Reminder",
+    "slug": "vocal-reminder",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "C:/Users/Nikhitha Chatla/Downloads/app icon.webp",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "C:/Users/Nikhitha Chatla/Downloads/app icon.webp",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "This app needs access to the microphone to record voice reminders.",
+        "UIBackgroundModes": [
+          "audio",
+          "fetch",
+          "remote-notification"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "C:/Users/Nikhitha Chatla/OneDrive/Pictures/icons_reminderapp.JPG",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "RECORD_AUDIO",
+        "NOTIFICATIONS",
+        "android.permission.DETECT_SCREEN_CAPTURE"
+      ]
+    },
+    "web": {
+      "favicon": "C:/Users/Nikhitha Chatla/OneDrive/Pictures/icons_reminderapp2.JPG"
+    },
+    "plugins": [
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow $(Vocal Reminder) to access your microphone."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "C:/Users/Nikhitha Chatla/OneDrive/Pictures/icons_reminderapp3.JPG",
+          "color": "#ffffff",
+          "sounds": ["C:/Users/Nikhitha Chatla/Downloads/VINE BOOM SOUND Sound Effects Download - MobCup.Com.Co.mp3","C:/Users/Nikhitha Chatla/Downloads/simple-notification-152054.mp3"]
+        }
+      ]
+    ]
+  }
+} 
