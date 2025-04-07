@@ -4,10 +4,10 @@
     "slug": "vocal-reminder",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "C:/Users/Nikhitha Chatla/Downloads/app icon.webp",
+    "icon": "assets/icons/alarm-clock.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "C:/Users/Nikhitha Chatla/Downloads/app icon.webp",
+      "image": "assets/icons/alarm-clock.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -27,17 +27,18 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "C:/Users/Nikhitha Chatla/OneDrive/Pictures/icons_reminderapp.JPG",
+        "foregroundImage": "assets/icons/alert.png",
         "backgroundColor": "#ffffff"
       },
       "permissions": [
         "RECORD_AUDIO",
-        "NOTIFICATIONS",
-        "android.permission.DETECT_SCREEN_CAPTURE"
-      ]
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.anonymous.vocalreminder"
     },
     "web": {
-      "favicon": "C:/Users/Nikhitha Chatla/OneDrive/Pictures/icons_reminderapp2.JPG"
+      "favicon": "assets/icons/notification (1).png"
     },
     "plugins": [
       [
@@ -49,11 +50,25 @@
       [
         "expo-notifications",
         {
-          "icon": "C:/Users/Nikhitha Chatla/OneDrive/Pictures/icons_reminderapp3.JPG",
+          "icon": "assets/icons/alarm-clock.png",
           "color": "#ffffff",
-          "sounds": ["C:/Users/Nikhitha Chatla/Downloads/VINE BOOM SOUND Sound Effects Download - MobCup.Com.Co.mp3","C:/Users/Nikhitha Chatla/Downloads/simple-notification-152054.mp3"]
+          "sounds": [
+            "assets/sounds/Anime wow.mp3",
+            "assets/sounds/Bird.mp3",
+            "assets/sounds/Birds Chirping.mp3",
+            "assets/sounds/Die With A Smile.mp3",
+            "assets/sounds/Gun-Shot.mp3",
+            "assets/sounds/Iphone 16 Pro Max Ringtone .mp3",
+            "assets/sounds/Iphone Money Heist Ringtone.mp3",
+            "assets/sounds/j_a_r_v_i_s_alarm.mp3",
+            "assets/sounds/minions_wake_up.mp3",
+            "assets/sounds/mixkit-retro-game-emergency-alarm-1000.wav",
+            "assets/sounds/One Love.mp3",
+            "assets/sounds/simple-notification.mp3",
+            "assets/sounds/vine boom.mp3"
+          ]
         }
       ]
     ]
   }
-} 
+}

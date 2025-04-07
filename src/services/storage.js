@@ -21,10 +21,15 @@ export const StorageService = {
         return [];
       }
       const reminders = JSON.parse(remindersJson);
-      return reminders.map(reminder => ({
+      const mappedReminders = reminders.map(reminder => ({
+      //return reminders.map(reminder => ({
         ...reminder,
         date: new Date(reminder.date),
       }));
+
+    // Sort by upcoming date
+    mappedReminders.sort((a, b) => a.date - b.date);
+    return mappedReminders;
     } catch (error) {
       console.error('Error getting reminders:', error);
       return [];

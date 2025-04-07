@@ -1,15 +1,18 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Provider as PaperProvider, DefaultTheme } from 'react-native-paper';
 import { MaterialIcons } from '@expo/vector-icons';
+import { AppState } from 'react-native';
 
 // Import screens
 import HomeScreen from './src/screens/HomeScreen';
 import RecordScreen from './src/screens/RecordScreen';
 import RemindersScreen from './src/screens/RemindersScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import { StorageService } from './src/services/storage';
+import { NotificationService } from './src/services/notifications';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -25,6 +28,30 @@ const theme = {
 };
 
 export default function App() {
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (state) => {
+      if (state === 'active') {
+        const reminders = await StorageService.getReminders();
+        const now = new Date();
+  
+        for (const reminder of reminders) {
+          if (reminder.date > now && !reminder.notificationId) {
+            try {
+              const notificationId = await NotificationService.scheduleNotification(reminder);
+              reminder.notificationId = notificationId;
+            } catch (error) {
+              console.error('Error scheduling notification:', error);
+            }
+          }
+        }
+  
+        await AsyncStorage.setItem('@vocal_reminder_reminders', JSON.stringify(reminders));
+      }
+    });
+  
+    return () => subscription.remove();
+  }, []);
+  // Load reminders and schedule notifications when the app starts
   return (
     <PaperProvider theme={theme}>
       <NavigationContainer>

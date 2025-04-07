@@ -66,6 +66,9 @@ const RecordScreen = () => {
   };
 
   const saveReminder = async () => {
+    if (!reminder || !reminder.id || isNaN(new Date(reminder.date))) {
+      throw new Error('Invalid reminder');
+    }
     if (!audioUri || !title) {
       Alert.alert('Error', 'Please record audio and add a title');
       return;
@@ -79,7 +82,8 @@ const RecordScreen = () => {
         audioUri,
         isRecurring,
       };
-
+      const notificationId = await NotificationService.scheduleNotification(reminder);
+      reminder.notificationId = notificationId;
       await StorageService.saveReminder(reminder);
       await NotificationService.scheduleNotification(reminder);
       navigation.goBack();

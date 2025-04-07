@@ -22,8 +22,26 @@ const RemindersScreen = () => {
 
   const loadReminders = async () => {
     try {
-      const loadedReminders = await StorageService.getReminders();
-      setReminders(loadedReminders);
+      let loadedReminders = await StorageService.getReminders();
+  
+      const now = new Date();
+      const updatedReminders = await Promise.all(
+        loadedReminders.map(async (reminder) => {
+          if (
+            reminder.isRecurring &&
+            new Date(reminder.date) < now
+          ) {
+            const nextDate = new Date(reminder.date);
+            nextDate.setDate(nextDate.getDate() + 1); // Daily recurrence
+            reminder.date = nextDate;
+            await StorageService.saveReminder(reminder);
+            await NotificationService.scheduleNotification(reminder);
+          }
+          return reminder;
+        })
+      );
+  
+      setReminders(updatedReminders);
     } catch (error) {
       console.error('Error loading reminders:', error);
     }
@@ -31,6 +49,8 @@ const RemindersScreen = () => {
 
   const playAudio = async (uri) => {
     try {
+      const soundEnabled = JSON.parse(await AsyncStorage.getItem('soundEnabled'));
+      if (!soundEnabled) return;
       if (sound) {
         await sound.unloadAsync();
       }
@@ -99,12 +119,16 @@ const RemindersScreen = () => {
 
   return (
     <View style={styles.container}>
+     {reminders.length === 0 ? (
+      <Text style={styles.emptyText}>No reminders yet.</Text>
+    ) : (
       <FlatList
         data={reminders}
         renderItem={renderReminder}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
       />
+    )}
       <FAB
         icon="plus"
         style={styles.fab}
@@ -131,6 +155,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  emptyText: {
+    textAlign: 'center',
+    marginTop: 20,
+    fontSize: 16,
+    color: 'gray',
+  },  
   recurringText: {
     color: '#6200ee',
     marginTop: 4,
