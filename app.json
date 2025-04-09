@@ -53,19 +53,19 @@
           "icon": "assets/icons/alarm-clock.png",
           "color": "#ffffff",
           "sounds": [
-            "assets/sounds/Anime wow.mp3",
+            "assets/sounds/Animewow.mp3",
             "assets/sounds/Bird.mp3",
-            "assets/sounds/Birds Chirping.mp3",
-            "assets/sounds/Die With A Smile.mp3",
-            "assets/sounds/Gun-Shot.mp3",
-            "assets/sounds/Iphone 16 Pro Max Ringtone .mp3",
-            "assets/sounds/Iphone Money Heist Ringtone.mp3",
-            "assets/sounds/j_a_r_v_i_s_alarm.mp3",
-            "assets/sounds/minions_wake_up.mp3",
-            "assets/sounds/mixkit-retro-game-emergency-alarm-1000.wav",
-            "assets/sounds/One Love.mp3",
-            "assets/sounds/simple-notification.mp3",
-            "assets/sounds/vine boom.mp3"
+            "assets/sounds/BirdsChirping.mp3",
+            "assets/sounds/DieWithASmile.mp3",
+            "assets/sounds/GunShot.mp3",
+            "assets/sounds/Iphone16ProMaxRingtone.mp3",
+            "assets/sounds/IphoneMoneyHeistRingtone.mp3",
+            "assets/sounds/jarvisalarm.mp3",
+            "assets/sounds/minionswakeup.mp3",
+            "assets/sounds/mixkitretrogameemergencyalarm.wav",
+            "assets/sounds/OneLove.mp3",
+            "assets/sounds/simplenotification.mp3",
+            "assets/sounds/vineboom.mp3"
           ]
         }
       ]

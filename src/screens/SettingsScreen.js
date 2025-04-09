@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { List, Switch, Divider } from 'react-native-paper';
+import { StorageService } from '../services/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NotificationService } from '../services/notifications';
 
@@ -15,7 +16,9 @@ const SettingsScreen = () => {
 
   const loadSettings = async () => {
     try {
-      const notifications = await AsyncStorage.getItem('notificationsEnabled');
+      const notifications = await StorageService.getItem('notificationsEnabled');
+      // Uncomment the following line(below) if you want to use AsyncStorage for notifications
+      //const notifications = await AsyncStorage.getItem('notificationsEnabled');
       const dark = await AsyncStorage.getItem('darkMode');
       const sound = await AsyncStorage.getItem('soundEnabled');
 
@@ -30,7 +33,8 @@ const SettingsScreen = () => {
   const toggleNotifications = async (value) => {
     try {
       setNotificationsEnabled(value);
-      await AsyncStorage.setItem('notificationsEnabled', JSON.stringify(value));
+      //await AsyncStorage.setItem('notificationsEnabled', JSON.stringify(value));
+      await StorageService.setItem('notificationsEnabled', JSON.stringify(value));
       if (!value) {
         await NotificationService.cancelAllNotifications();
       }
@@ -42,7 +46,9 @@ const SettingsScreen = () => {
   const toggleDarkMode = async (value) => {
     try {
       setDarkMode(value);
-      await AsyncStorage.setItem('darkMode', JSON.stringify(value));
+      // Uncomment the following line(below) if you want to use AsyncStorage for dark mode
+      //await AsyncStorage.setItem('darkMode', JSON.stringify(value));
+      await StorageService.setItem('darkMode', JSON.stringify(value));
     } catch (error) {
       console.error('Error saving dark mode settings:', error);
     }
@@ -51,7 +57,14 @@ const SettingsScreen = () => {
   const toggleSound = async (value) => {
     try {
       setSoundEnabled(value);
-      await AsyncStorage.setItem('soundEnabled', JSON.stringify(value));
+      //await AsyncStorage.setItem('soundEnabled', JSON.stringify(value));
+      await StorageService.setItem('soundEnabled', JSON.stringify(value));
+      {/*if (value) {
+        await NotificationService.enableSound();
+      } else {
+        await NotificationService.disableSound();
+      }*/}
+      // Uncomment the above lines if you have methods to enable/disable sound in NotificationService
     } catch (error) {
       console.error('Error saving sound settings:', error);
     }

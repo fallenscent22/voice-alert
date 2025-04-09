@@ -1,13 +1,14 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { StorageService } from './storage';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => {
-    const soundEnabled = JSON.parse(await AsyncStorage.getItem('soundEnabled'));
+    const soundEnabled = await StorageService.getItem('soundEnabled');
     return {
       shouldShowAlert: true,
-      shouldPlaySound: soundEnabled,
+      shouldPlaySound: Platform.OS !== 'web' ? JSON.parse(soundEnabled) : false,
       shouldSetBadge: true,
     };
   },
@@ -29,6 +30,7 @@ export const NotificationService = {
   async scheduleNotification(reminder) {
     const trigger = new Date(reminder.date);
     const now = new Date();
+    sound: Platform.OS !== 'web' ? true : undefined;
 
     if (trigger <= now) {
       throw new Error('Cannot schedule notification for past date');
@@ -40,6 +42,8 @@ export const NotificationService = {
         body: 'Time for your reminder!',
         sound: true,
       },
+      trigger: trigger, // where trigger is a Date object
+      // Trigger the notification at the specified date and time
       trigger: {
         repeats: true,
         hour: trigger.getHours(),
@@ -73,4 +77,4 @@ export const NotificationService = {
       });
     }
   },
-}; 
+};
