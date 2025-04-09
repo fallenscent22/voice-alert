@@ -21,30 +21,36 @@ const Tab = createBottomTabNavigator();
 export default function App() {
   const scheme = useColorScheme();
 
-  // Combine Paper and Navigation themes
-  const CombinedDefaultTheme = {
-    ...PaperDefaultTheme,
-    ...NavigationDefaultTheme,
-    colors: {
-      ...PaperDefaultTheme.colors,
-      ...NavigationDefaultTheme.colors,
-      primary: '#6200ee',
-      accent: '#03dac4',
-      background: '#f6f6f6',
-    },
-  };
+  // Ensure default themes are defined before using them
+const basePaperDefault = PaperDefaultTheme || {};
+const basePaperDark = PaperDarkTheme || {};
+const baseNavDefault = NavigationDefaultTheme || {};
+const baseNavDark = NavigationDarkTheme || {};
 
-  const CombinedDarkTheme = {
-    ...PaperDarkTheme,
-    ...NavigationDarkTheme,
-    colors: {
-      ...PaperDarkTheme.colors,
-      ...NavigationDarkTheme.colors,
-      primary: '#bb86fc',
-      accent: '#03dac4',
-      background: '#121212',
-    },
-  };
+// Combine Paper and Navigation themes safely
+const CombinedDefaultTheme = {
+  ...basePaperDefault,
+  ...baseNavDefault,
+  colors: {
+    ...(basePaperDefault.colors || {}),
+    ...(baseNavDefault.colors || {}),
+    primary: '#6200ee',
+    accent: '#03dac4',
+    background: '#f6f6f6',
+  },
+};
+
+const CombinedDarkTheme = {
+  ...basePaperDark,
+  ...baseNavDark,
+  colors: {
+    ...(basePaperDark.colors || {}),
+    ...(baseNavDark.colors || {}),
+    primary: '#bb86fc',
+    accent: '#03dac4',
+    background: '#121212',
+  },
+};
 
   const theme = scheme === 'dark' ? CombinedDarkTheme : CombinedDefaultTheme;
 
@@ -82,6 +88,7 @@ export default function App() {
 
   // Safety check before using theme.colors
   if (!theme || !theme.colors) {
+    console.error('Theme is undefined or missing colors:', theme);
     return null; // or a fallback UI
   }
 
