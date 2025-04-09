@@ -6,11 +6,14 @@ import { Audio } from 'expo-av';
 import { StorageService } from '../services/storage';
 import { NotificationService } from '../services/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const RemindersScreen = () => {
   const navigation = useNavigation();
   const [reminders, setReminders] = useState([]);
   const [sound, setSound] = useState(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   useEffect(() => {
     loadReminders();
@@ -130,6 +133,26 @@ const RemindersScreen = () => {
         contentContainerStyle={styles.listContainer}
       />
     )}
+
+     {/* DATE PICKER */}
+    {showDatePicker && (
+  <DateTimePicker
+    value={selectedDate}
+    mode="datetime"
+    display="default"
+    onChange={(event, date) => {
+      setShowDatePicker(false);
+      if (date) setSelectedDate(date);
+    }}
+  />
+)}
+{/* OPEN PICKER BUTTON */}
+<IconButton
+      icon="calendar"
+      size={28}
+      onPress={() => setShowDatePicker(true)}
+      style={{ alignSelf: 'center', marginTop: 10 }}
+    />
       <FAB
         icon="plus"
         style={styles.fab}

@@ -13,7 +13,7 @@ const defaultSounds=[
   {name: 'Birds Chirping', file: require('../../assets/sounds/BirdsChirping.mp3')},
   {name: 'Die With A Smile', file: require('../../assets/sounds/DieWithASmile.mp3')},
   {name: 'Gun Shot', file: require('../../assets/sounds/GunShot.mp3')},
-  {name: 'iphone 16 Pro Max', file: require('../../assets/sounds/Iphone16ProMaxRingtone .mp3')},
+  {name: 'iphone 16 Pro Max', file: require('../../assets/sounds/Iphone16ProMaxRingtone.mp3')},
   {name: 'Money Heist', file: require('../../assets/sounds/IphoneMoneyHeistRingtone.mp3')},
   {name: 'JARVIS Alarm', file: require('../../assets/sounds/jarvisalarm.mp3')},
   {name: 'Minions Wakeup', file: require('../../assets/sounds/minionswakeup.mp3')},
@@ -28,16 +28,17 @@ const RecordScreen = () => {
   const route = useRoute();
   const scheme = useColorScheme();
   const theme = useTheme();
-
-  
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(new Date());
   const [isRecurring, setIsRecurring] = useState(false);
-  const [showDateTimePicker, setShowDateTimePicker] = useState(false);
   const [audioUri, setAudioUri] = useState(null);
-  const [showDatePicker, setShowPicker] = useState(false);
+  //const [reminderDate, setReminderDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState('date');
+  //const [showTimePicker, setShowTimePicker] = useState(false);
   const [mode, setMode] = useState('datetime');
 
   useEffect(() => {
@@ -111,9 +112,18 @@ const RecordScreen = () => {
   };
 
   const selectDefaultSound = async (soundFile) => {
-    const { sound, status } = await Audio.Sound.createAsync(soundFile);
-    await sound.playAsync();
-    setAudioUri(soundFile); // Store file reference
+    if (recording) return;
+    try {
+      if (Audio._currentSound) {
+        await Audio._currentSound.unloadAsync(); // Stop and unload if something is already playing
+      }
+      const { sound } = await Audio.Sound.createAsync(soundFile);
+      Audio._currentSound = sound;
+      await sound.playAsync();
+      setAudioUri(soundFile);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to play sound');
+    }
   };
 
 
@@ -128,11 +138,35 @@ const RecordScreen = () => {
 
       <Button
         mode="outlined"
+        onPress={() => {
+        setPickerMode('date');
+        setShowPicker(true);
+      }}
+      style={styles.dateButton}
+      >
+  {date.toDateString()}
+      </Button>
+
+      <Button
+      mode="outlined"
+      onPress={() => {
+      setPickerMode('time');
+      setShowPicker(true);
+    }}
+     style={styles.dateButton}
+    >
+  {date.toLocaleTimeString()}
+</Button>
+
+
+     {/* <Button
+        mode="outlined"
         onPress={() => setShowDatePicker(true)}
         style={styles.dateButton}
       >
         {date.toLocaleString()}
       </Button>
+     */}
 
       <View style={styles.switchContainer}>
         <Text>Recurring Reminder</Text>
@@ -178,7 +212,7 @@ const RecordScreen = () => {
         Save Reminder
       </Button>
 
-      <Portal>
+      {/*<Portal>
         <Modal
           visible={showDatePicker}
           onDismiss={() => setShowDatePicker(false)}
@@ -199,6 +233,41 @@ const RecordScreen = () => {
           )}
         </Modal>
       </Portal>
+*/}
+      <Portal>
+  <Modal
+    visible={showPicker}
+    onDismiss={() => setShowPicker(false)}
+    contentContainerStyle={styles.modal}
+  >
+    {showPicker && (
+      <DateTimePicker
+        value={date}
+        mode={pickerMode}
+        display="default"
+        onChange={(event, selectedDate) => {
+          setShowPicker(false);
+          if (selectedDate) {
+            // Update only date or time depending on mode
+            if (pickerMode === 'date') {
+              const updatedDate = new Date(date);
+              updatedDate.setFullYear(selectedDate.getFullYear());
+              updatedDate.setMonth(selectedDate.getMonth());
+              updatedDate.setDate(selectedDate.getDate());
+              setDate(updatedDate);
+            } else if (pickerMode === 'time') {
+              const updatedDate = new Date(date);
+              updatedDate.setHours(selectedDate.getHours());
+              updatedDate.setMinutes(selectedDate.getMinutes());
+              updatedDate.setSeconds(0);
+              setDate(updatedDate);
+            }
+          }
+        }}
+      />
+    )}
+   </Modal>
+    </Portal>
     </View>
   );
 };
@@ -207,11 +276,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
-    //backgroundColor: '#f6f6f6',
   },
   input: {
     marginBottom: 16,
-    //backgroundColor: 'white',
   },
   dateButton: {
     marginBottom: 16,
@@ -223,8 +290,6 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   recordingContainer: {
-    //flex: 1,
-    //justifyContent: 'center',
     marginBottom: 16,
     alignItems: 'center',
   },
