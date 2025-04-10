@@ -5,6 +5,7 @@ import { Provider as PaperProvider, DefaultTheme as PaperDefaultTheme, DarkTheme
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, useColorScheme } from 'react-native';
+import { ThemeProvider, ThemeContext } from './src/contexts/ThemeContext';
 
 // Screens
 import HomeScreen from './src/screens/HomeScreen';
@@ -56,6 +57,7 @@ const CombinedDarkTheme = {
 
   useEffect(() => {
     const setupApp = async () => {
+      Notifications.requestPermissionsAsync();
       await NotificationService.requestPermissions();
       await NotificationService.createNotificationChannel();
     };

@@ -5,7 +5,8 @@ import { Audio } from 'expo-av';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { StorageService } from '../services/storage';
-import { NotificationService } from '../services/notifications';
+//import { NotificationService } from '../services/notifications';
+import * as Notifications from 'expo-notifications';
 
 const defaultSounds=[
   {name: 'Anime Wow', file: require('../../assets/sounds/Animewow.mp3')},
@@ -26,7 +27,6 @@ const defaultSounds=[
 const RecordScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const scheme = useColorScheme();
   const theme = useTheme();
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -34,13 +34,13 @@ const RecordScreen = () => {
   const [date, setDate] = useState(new Date());
   const [isRecurring, setIsRecurring] = useState(false);
   const [audioUri, setAudioUri] = useState(null);
-  //const [reminderDate, setReminderDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [pickerMode, setPickerMode] = useState('date');
-  //const [showTimePicker, setShowTimePicker] = useState(false);
-  const [mode, setMode] = useState('datetime');
+  const [playingSound, setPlayingSound] = useState(null);
+  const [selectedSound, setSelectedSound] = useState(null); // { type: 'default', name: 'ding', file: defaultSounds.ding } or { type: 'custom', uri: '...' }
 
+
+  
   useEffect(() => {
     if (route.params?.reminder) {
       const { reminder } = route.params;
@@ -51,7 +51,13 @@ const RecordScreen = () => {
     }
     return () => {
       if (recording) {
+        // Stop and unload recording if it's still active
         recording.stopAndUnloadAsync();
+      }
+       // Stop and unload currently playing sound if any
+       if (playingSound) {
+        playingSound.stopAsync();
+        playingSound.unloadAsync();
       }
     };
   }, []);
@@ -83,45 +89,74 @@ const RecordScreen = () => {
       const uri = recording.getURI();
       setAudioUri(uri);
       setRecording(null);
+      setSelectedSound(null); // unselect default sound if manual recording is made
     } catch (err) {
       Alert.alert('Error', 'Failed to stop recording');
     }
   };
 
   const saveReminder = async () => {
-    if (!title || !date || !audioUri) {
+    if (!title || !date || (!audioUri && !selectedSound)) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
 
     try {
       const reminder = {
-        id: route.params?.reminder?.id || Date.now().toString(),
+        id: route.params?.reminder?.id || `${Date.now()}-${Math.random()}`,
         title,
         date,
-        audioUri,
         isRecurring,
+        audioUri: audioUri || selectedSound?.name || null, // save either recording uri or selected sound name
+        selectedSound: selectedSound?.name || null,
       };
-      const notificationId = await NotificationService.scheduleNotification(reminder);
-      reminder.notificationId = notificationId;
+      //const notificationId = await NotificationService.scheduleNotification(reminder);
+      //reminder.notificationId = notificationId;
       await StorageService.saveReminder(reminder);
+      scheduleNotification(reminder);
       navigation.goBack();
     } catch (error) {
       Alert.alert('Error', 'Failed to save reminder');
     }
   };
+  const scheduleNotification = async (reminder) => {
+    //const trigger = new Date(reminder.date);
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: reminder.title,
+        body: 'Tap to manage your reminder.',
+        sound: 'default',
+        data: { reminderId: reminder.id },
+      },
+      trigger: reminder.date instanceof Date ? reminder.date : new Date(reminder.date),
+    });
+    reminder.notificationId = notificationId;
+    await StorageService.saveReminder(reminder);
+  };
 
-  const selectDefaultSound = async (soundFile) => {
+  const selectDefaultSound = async (soundFile, soundName) => {
     if (recording) return;
     try {
-      if (Audio._currentSound) {
-        await Audio._currentSound.unloadAsync(); // Stop and unload if something is already playing
+      // Stop any currently playing sound
+      if (playingSound) {
+        await playingSound.stopAsync();
+        await playingSound.unloadAsync(); // Stop and unload if something is already playing
+        setPlayingSound(null);
       }
+
       const { sound } = await Audio.Sound.createAsync(soundFile);
-      Audio._currentSound = sound;
+      setPlayingSound(sound);
       await sound.playAsync();
-      setAudioUri(soundFile);
+
+      setSelectedSound({
+        type: 'default',
+        name: soundName,
+        file: soundFile,
+      });
+
+      setAudioUri(null); // Optional: unset recording URI if a default sound is selected
     } catch (error) {
+      console.error('Sound playback error:', error);
       Alert.alert('Error', 'Failed to play sound');
     }
   };
@@ -144,7 +179,7 @@ const RecordScreen = () => {
       }}
       style={styles.dateButton}
       >
-  {date.toDateString()}
+      {date.toDateString()}
       </Button>
 
       <Button
@@ -152,21 +187,11 @@ const RecordScreen = () => {
       onPress={() => {
       setPickerMode('time');
       setShowPicker(true);
-    }}
+      }}
      style={styles.dateButton}
     >
-  {date.toLocaleTimeString()}
-</Button>
-
-
-     {/* <Button
-        mode="outlined"
-        onPress={() => setShowDatePicker(true)}
-        style={styles.dateButton}
-      >
-        {date.toLocaleString()}
-      </Button>
-     */}
+     {date.toLocaleTimeString()}
+    </Button>
 
       <View style={styles.switchContainer}>
         <Text>Recurring Reminder</Text>
@@ -196,7 +221,7 @@ const RecordScreen = () => {
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.soundButton}
-            onPress={() => selectDefaultSound(item.file)}
+            onPress={() => selectDefaultSound(item.file, item.name)}
           >
             <Text>{item.name}</Text>
           </TouchableOpacity>
@@ -207,54 +232,33 @@ const RecordScreen = () => {
         mode="contained"
         onPress={saveReminder}
         style={styles.saveButton}
-        disabled={!audioUri || !title}
+        disabled={ !title || (!audioUri && !selectedSound) }
       >
         Save Reminder
       </Button>
 
-      {/*<Portal>
-        <Modal
-          visible={showDatePicker}
-          onDismiss={() => setShowDatePicker(false)}
-          contentContainerStyle={styles.modal}
-        >
-          {showDatePicker && (
-          <DateTimePicker
-            value={date}
-            mode="datetime"
-            display="default"
-            onChange={(event, selectedDate) => {
-              setShowDatePicker(false);
-              if (selectedDate) {
-                setDate(selectedDate);
-              }
-            }}
-          />
-          )}
-        </Modal>
-      </Portal>
-*/}
       <Portal>
-  <Modal
-    visible={showPicker}
-    onDismiss={() => setShowPicker(false)}
-    contentContainerStyle={styles.modal}
-  >
-    {showPicker && (
-      <DateTimePicker
+        <Modal
+        visible={showPicker}
+        onDismiss={() => setShowPicker(false)}
+        contentContainerStyle={styles.modal}
+        >
+        {showPicker && (
+        <DateTimePicker
         value={date}
         mode={pickerMode}
         display="default"
         onChange={(event, selectedDate) => {
           setShowPicker(false);
           if (selectedDate) {
+            const updatedDate = new Date(date);
             // Update only date or time depending on mode
             if (pickerMode === 'date') {
               const updatedDate = new Date(date);
               updatedDate.setFullYear(selectedDate.getFullYear());
               updatedDate.setMonth(selectedDate.getMonth());
               updatedDate.setDate(selectedDate.getDate());
-              setDate(updatedDate);
+              //setDate(updatedDate);
             } else if (pickerMode === 'time') {
               const updatedDate = new Date(date);
               updatedDate.setHours(selectedDate.getHours());

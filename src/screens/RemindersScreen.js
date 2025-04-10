@@ -1,203 +1,166 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, FlatList, Alert } from 'react-native';
-import { Text, Card, IconButton, FAB } from 'react-native-paper';
-import { useNavigation } from '@react-navigation/native';
-import { Audio } from 'expo-av';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, StyleSheet, FlatList, Alert, AppState } from 'react-native';
+import { Text, Button, Card, IconButton, Portal, Dialog, Paragraph } from 'react-native-paper';
+import { useIsFocused } from '@react-navigation/native';
 import { StorageService } from '../services/storage';
-import { NotificationService } from '../services/notifications';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Notifications from 'expo-notifications';
+import { Audio } from 'expo-av';
 
-const RemindersScreen = () => {
-  const navigation = useNavigation();
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
+
+export default function RemindersScreen({ navigation }) {
+  const isFocused = useIsFocused();
   const [reminders, setReminders] = useState([]);
+  const [currentReminder, setCurrentReminder] = useState(null);
+  const [visible, setVisible] = useState(false);
   const [sound, setSound] = useState(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const appState = useRef(AppState.currentState);
 
   useEffect(() => {
-    loadReminders();
+    if (isFocused) loadReminders();
+  }, [isFocused]);
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationReceivedListener(handleNotification);
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+
     return () => {
+      subscription.remove();
+      responseSubscription.remove();
       if (sound) {
+        sound.stopAsync();
         sound.unloadAsync();
       }
     };
   }, []);
 
   const loadReminders = async () => {
+    const data = await StorageService.getReminders();
+    setReminders(data || []);
+  };
+
+  const handleNotification = async (notification) => {
+    const reminderId = notification.request.content.data.reminderId;
+    const reminder = reminders.find(r => r.id === reminderId);
+    if (reminder) {
+      setCurrentReminder(reminder);
+      setVisible(true);
+      playReminderSound(reminder.audioUri);
+    }
+  };
+
+  const handleNotificationResponse = async (response) => {
+    const reminderId = response.notification.request.content.data.reminderId;
+    const action = response.actionIdentifier;
+
+    if (action === 'SNOOZE') {
+      snoozeReminder(reminderId);
+    } else if (action === 'STOP') {
+      stopReminder(reminderId);
+    }
+  };
+
+  const snoozeReminder = async (reminderId) => {
+    const reminder = reminders.find(r => r.id === reminderId);
+    if (!reminder) return;
+
+    const newDate = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes later
+    const newNotificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: reminder.title,
+        body: 'Reminder Snoozed',
+        data: { reminderId: reminder.id },
+      },
+      trigger: newDate,
+    });
+
+    reminder.date = newDate;
+    reminder.notificationId = newNotificationId;
+
+    await StorageService.updateReminder(reminder);
+    loadReminders();
+    stopPlayingSound();
+    setVisible(false);
+  };
+
+  const stopReminder = async (reminderId) => {
+    stopPlayingSound();
+    setVisible(false);
+    await Notifications.cancelAllScheduledNotificationsAsync(); // optional: or cancel specific one
+  };
+
+  const stopPlayingSound = async () => {
+    if (sound) {
+      await sound.stopAsync();
+      await sound.unloadAsync();
+      setSound(null);
+    }
+  };
+
+  const playReminderSound = async (uri) => {
     try {
-      let loadedReminders = await StorageService.getReminders();
-  
-      const now = new Date();
-      const updatedReminders = await Promise.all(
-        loadedReminders.map(async (reminder) => {
-          if (
-            reminder.isRecurring &&
-            new Date(reminder.date) < now
-          ) {
-            const nextDate = new Date(reminder.date);
-            nextDate.setDate(nextDate.getDate() + 1); // Daily recurrence
-            reminder.date = nextDate;
-            await StorageService.saveReminder(reminder);
-            await NotificationService.scheduleNotification(reminder);
-          }
-          return reminder;
-        })
+      const { sound } = await Audio.Sound.createAsync(
+        typeof uri === 'string' && uri.startsWith('file:')
+          ? { uri }
+          : uri
       );
-  
-      setReminders(updatedReminders);
-    } catch (error) {
-      console.error('Error loading reminders:', error);
+      setSound(sound);
+      await sound.playAsync();
+    } catch (e) {
+      Alert.alert('Error', 'Failed to play reminder sound.');
     }
   };
 
-  const playAudio = async (uri) => {
-    try {
-      const soundEnabled = JSON.parse(await AsyncStorage.getItem('soundEnabled'));
-      if (!soundEnabled) return;
-      if (sound) {
-        await sound.unloadAsync();
-      }
-      const { sound: newSound } = await Audio.Sound.createAsync({ uri });
-      setSound(newSound);
-      await newSound.playAsync();
-    } catch (err) {
-      Alert.alert('Error', 'Failed to play audio');
-    }
+  const deleteReminder = async (reminderId) => {
+    await StorageService.deleteReminder(reminderId);
+    loadReminders();
   };
-
-  const deleteReminder = async (id) => {
-    Alert.alert(
-      'Delete Reminder',
-      'Are you sure you want to delete this reminder?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await StorageService.deleteReminder(id);
-              await NotificationService.cancelNotification(id);
-              setReminders(reminders.filter((r) => r.id !== id));
-            } catch (error) {
-              Alert.alert('Error', 'Failed to delete reminder');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const renderReminder = ({ item }) => (
-    <Card style={styles.reminderCard}>
-      <Card.Content>
-        <View style={styles.reminderHeader}>
-          <Text variant="titleMedium">{item.title}</Text>
-          <IconButton
-            icon="delete"
-            size={20}
-            onPress={() => deleteReminder(item.id)}
-          />
-        </View>
-        <Text variant="bodyMedium">
-          {new Date(item.date).toLocaleString()}
-        </Text>
-        {item.isRecurring && (
-          <Text variant="bodySmall" style={styles.recurringText}>
-            Recurring
-          </Text>
-        )}
-        <IconButton
-          icon="play"
-          size={24}
-          onPress={() => playAudio(item.audioUri)}
-          style={styles.playButton}
-        />
-      </Card.Content>
-    </Card>
-  );
 
   return (
     <View style={styles.container}>
-     {reminders.length === 0 ? (
-      <Text style={styles.emptyText}>No reminders yet.</Text>
-    ) : (
       <FlatList
         data={reminders}
-        renderItem={renderReminder}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
+        renderItem={({ item }) => (
+          <Card style={styles.card}>
+            <Card.Title title={item.title} subtitle={new Date(item.date).toLocaleString()} />
+            <Card.Actions>
+              <IconButton icon="play" onPress={() => playReminderSound(item.audioUri)} />
+              <IconButton icon="pencil" onPress={() => navigation.navigate('Record', { reminder: item })} />
+              <IconButton icon="delete" onPress={() => deleteReminder(item.id)} />
+            </Card.Actions>
+          </Card>
+        )}
       />
-    )}
 
-     {/* DATE PICKER */}
-    {showDatePicker && (
-  <DateTimePicker
-    value={selectedDate}
-    mode="datetime"
-    display="default"
-    onChange={(event, date) => {
-      setShowDatePicker(false);
-      if (date) setSelectedDate(date);
-    }}
-  />
-)}
-{/* OPEN PICKER BUTTON */}
-<IconButton
-      icon="calendar"
-      size={28}
-      onPress={() => setShowDatePicker(true)}
-      style={{ alignSelf: 'center', marginTop: 10 }}
-    />
-      <FAB
-        icon="plus"
-        style={styles.fab}
-        onPress={() => navigation.navigate('Record')}
-      />
+      <Portal>
+        <Dialog visible={visible} onDismiss={() => setVisible(false)}>
+          <Dialog.Title>{currentReminder?.title}</Dialog.Title>
+          <Dialog.Content>
+            <Paragraph>It's time for your reminder!</Paragraph>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => snoozeReminder(currentReminder.id)}>Snooze 15 mins</Button>
+            <Button onPress={() => stopReminder(currentReminder.id)}>Stop</Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f6f6f6',
+    padding: 10,
   },
-  listContainer: {
-    padding: 16,
-  },
-  reminderCard: {
-    marginBottom: 12,
-    elevation: 2,
-  },
-  reminderHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  emptyText: {
-    textAlign: 'center',
-    marginTop: 20,
-    fontSize: 16,
-    color: 'gray',
-  },  
-  recurringText: {
-    color: '#6200ee',
-    marginTop: 4,
-  },
-  playButton: {
-    marginTop: 8,
-  },
-  fab: {
-    position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 0,
+  card: {
+    marginVertical: 8,
   },
 });
-
-export default RemindersScreen; 

@@ -3,14 +3,19 @@ import { View, StyleSheet, FlatList } from 'react-native';
 import { Text, Card, FAB } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { StorageService } from '../services/storage';
+import { useIsFocused } from '@react-navigation/native';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
   const [reminders, setReminders] = useState([]);
+  const isFocused = useIsFocused();
+
 
   useEffect(() => {
-    loadReminders();
-  }, []);
+    if (isFocused) {
+      loadReminders(); // fetch updated list whenever screen is focused
+    }
+  }, [isFocused]);
 
   const loadReminders = async () => {
     try {
