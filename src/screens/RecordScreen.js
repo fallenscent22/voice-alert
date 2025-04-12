@@ -1,33 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Alert, FlatList, TouchableOpacity, useColorScheme } from 'react-native';
-import { Text, Button, TextInput, Switch, Portal, Modal, useTheme} from 'react-native-paper';
+import { View, StyleSheet, Alert, FlatList, TouchableOpacity} from 'react-native';
+import { Text, Button, TextInput, Switch, Portal, Modal, useTheme } from 'react-native-paper';
 import { Audio } from 'expo-av';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { StorageService } from '../services/storage';
-//import { NotificationService } from '../services/notifications';
 import * as Notifications from 'expo-notifications';
 
-const defaultSounds=[
-  {name: 'Anime Wow', file: require('../../assets/sounds/Animewow.mp3')},
-  {name: 'Bird', file: require('../../assets/sounds/Bird.mp3')},
-  {name: 'Birds Chirping', file: require('../../assets/sounds/BirdsChirping.mp3')},
-  {name: 'Die With A Smile', file: require('../../assets/sounds/DieWithASmile.mp3')},
-  {name: 'Gun Shot', file: require('../../assets/sounds/GunShot.mp3')},
-  {name: 'iphone 16 Pro Max', file: require('../../assets/sounds/Iphone16ProMaxRingtone.mp3')},
-  {name: 'Money Heist', file: require('../../assets/sounds/IphoneMoneyHeistRingtone.mp3')},
-  {name: 'JARVIS Alarm', file: require('../../assets/sounds/jarvisalarm.mp3')},
-  {name: 'Minions Wakeup', file: require('../../assets/sounds/minionswakeup.mp3')},
-  {name: 'Retro Game Alarm', file: require('../../assets/sounds/mixkitretrogameemergencyalarm.wav')},
-  {name: 'One Love', file: require('../../assets/sounds/OneLove.mp3')},
-  {name: 'Simple Notification', file: require('../../assets/sounds/simplenotification.mp3')},
-  {name: 'Vine Boom', file: require('../../assets/sounds/vineboom.mp3')}
+const defaultSounds = [
+  {id: '1', name: 'Anime Wow', file: require('../../assets/sounds/Animewow.mp3')},
+  {id: '2', name: 'Bird', file: require('../../assets/sounds/Bird.mp3')},
+  {id: '3', name: 'Birds Chirping', file: require('../../assets/sounds/BirdsChirping.mp3')},
+  {id: '4', name: 'Die With A Smile', file: require('../../assets/sounds/DieWithASmile.mp3')},
+  {id: '5', name: 'Gun Shot', file: require('../../assets/sounds/GunShot.mp3')},
+  {id: '6', name: 'iphone 16 Pro Max', file: require('../../assets/sounds/Iphone16ProMaxRingtone.mp3')},
+  {id: '7', name: 'Money Heist', file: require('../../assets/sounds/IphoneMoneyHeistRingtone.mp3')},
+  {id: '8', name: 'JARVIS Alarm', file: require('../../assets/sounds/jarvisalarm.mp3')},
+  {id: '9', name: 'Minions Wakeup', file: require('../../assets/sounds/minionswakeup.mp3')},
+  {id: '10', name: 'Retro Game Alarm', file: require('../../assets/sounds/mixkitretrogameemergencyalarm.wav')},
+  {id: '11', name: 'One Love', file: require('../../assets/sounds/OneLove.mp3')},
+  {id: '12', name: 'Simple Notification', file: require('../../assets/sounds/simplenotification.mp3')},
+  {id: '13', name: 'Vine Boom', file: require('../../assets/sounds/vineboom.mp3')}
 ];
 
 const RecordScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const theme = useTheme();
+
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [title, setTitle] = useState('');
@@ -37,30 +37,43 @@ const RecordScreen = () => {
   const [showPicker, setShowPicker] = useState(false);
   const [pickerMode, setPickerMode] = useState('date');
   const [playingSound, setPlayingSound] = useState(null);
-  const [selectedSound, setSelectedSound] = useState(null); // { type: 'default', name: 'ding', file: defaultSounds.ding } or { type: 'custom', uri: '...' }
+  const [selectedSound, setSelectedSound] = useState(null); 
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingReminderId, setEditingReminderId] = useState(null);
+// Stop & unload sound helper
+useEffect(() => {
+  if (route.params?.reminder) {
+    const { reminder } = route.params;
+    setTitle(reminder.title);
+    setDate(new Date(reminder.date));
+    setIsRecurring(reminder.isRecurring);
+    setAudioUri(reminder.audioUri);
+    setSelectedSound(reminder.selectedSound ? { name: reminder.selectedSound, type: 'default' } : null);
+    setIsEditing(true);
+    setEditingReminderId(reminder.id);
+  }
 
-
-  
-  useEffect(() => {
-    if (route.params?.reminder) {
-      const { reminder } = route.params;
-      setTitle(reminder.title);
-      setDate(new Date(reminder.date));
-      setIsRecurring(reminder.isRecurring);
-      setAudioUri(reminder.audioUri);
+  return () => {
+    if (recording) recording.stopAndUnloadAsync();
+    if (playingSound) {
+      playingSound.stopAsync().then(() => playingSound.unloadAsync());
     }
-    return () => {
-      if (recording) {
-        // Stop and unload recording if it's still active
-        recording.stopAndUnloadAsync();
-      }
-       // Stop and unload currently playing sound if any
-       if (playingSound) {
-        playingSound.stopAsync();
-        playingSound.unloadAsync();
-      }
-    };
-  }, []);
+    stopAndUnloadSound();
+  };
+}, []);
+
+
+const stopAndUnloadSound = async () => {
+  if (playingSound) {
+    try {
+      await playingSound.stopAsync();
+      await playingSound.unloadAsync();
+    } catch (err) {
+      console.log("Error stopping sound:", err);
+    }
+    setPlayingSound(null);
+  }
+};
 
   const startRecording = async () => {
     try {
@@ -95,6 +108,51 @@ const RecordScreen = () => {
     }
   };
 
+  const scheduleNotification = async (reminder) => {
+    try {
+      // Cancel any existing notification for this reminder
+      if (reminder.notificationId) {
+        await Notifications.cancelScheduledNotificationAsync(reminder.notificationId);
+      }
+
+      // Ensure the date is in the future
+      const triggerDate = new Date(reminder.date);
+      if (triggerDate <= new Date()) {
+        Alert.alert('Invalid Date', 'Please select a future date and time.');
+        return false;
+      }
+
+      // Schedule the notification
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: reminder.title,
+          body: 'Time for your reminder!',
+          sound: true, // Enable sound
+          priority: 'high',
+          data: { 
+            reminderId: reminder.id,
+            audioUri: reminder.audioUri,
+            selectedSound: reminder.selectedSound
+          },
+        },
+        trigger: {
+          date: triggerDate,
+          seconds: reminder.isRecurring ? 24 * 60 * 60 : undefined, // If recurring, repeat daily
+        },
+      });
+
+      return notificationId;
+    } catch (error) {
+      console.error('Error scheduling notification:', error);
+      Alert.alert('Error', 'Failed to schedule notification');
+      return false;
+    }
+  };
+
+  const generateUniqueId = () => {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  };
+
   const saveReminder = async () => {
     if (!title || !date || (!audioUri && !selectedSound)) {
       Alert.alert('Error', 'Please fill in all required fields');
@@ -102,47 +160,36 @@ const RecordScreen = () => {
     }
 
     try {
+      await stopAndUnloadSound();
+      
       const reminder = {
-        id: route.params?.reminder?.id || `${Date.now()}-${Math.random()}`,
+        id: editingReminderId || generateUniqueId(),
         title,
-        date,
+        date: date.getTime(), // Store as timestamp instead of Date object
         isRecurring,
-        audioUri: audioUri || selectedSound?.name || null, // save either recording uri or selected sound name
+        audioUri: audioUri,
         selectedSound: selectedSound?.name || null,
       };
-      //const notificationId = await NotificationService.scheduleNotification(reminder);
-      //reminder.notificationId = notificationId;
+
+      const notificationId = await scheduleNotification(reminder);
+      if (!notificationId) return;
+
+      reminder.notificationId = notificationId;
       await StorageService.saveReminder(reminder);
-      scheduleNotification(reminder);
+      
+      Alert.alert('Success', 'Reminder saved successfully!');
       navigation.goBack();
     } catch (error) {
+      console.error('Error saving reminder:', error);
       Alert.alert('Error', 'Failed to save reminder');
     }
-  };
-  const scheduleNotification = async (reminder) => {
-    //const trigger = new Date(reminder.date);
-    const notificationId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: reminder.title,
-        body: 'Tap to manage your reminder.',
-        sound: 'default',
-        data: { reminderId: reminder.id },
-      },
-      trigger: reminder.date instanceof Date ? reminder.date : new Date(reminder.date),
-    });
-    reminder.notificationId = notificationId;
-    await StorageService.saveReminder(reminder);
   };
 
   const selectDefaultSound = async (soundFile, soundName) => {
     if (recording) return;
     try {
       // Stop any currently playing sound
-      if (playingSound) {
-        await playingSound.stopAsync();
-        await playingSound.unloadAsync(); // Stop and unload if something is already playing
-        setPlayingSound(null);
-      }
+      await stopAndUnloadSound();
 
       const { sound } = await Audio.Sound.createAsync(soundFile);
       setPlayingSound(sound);
@@ -216,14 +263,21 @@ const RecordScreen = () => {
       <Text style={{ marginVertical: 12 }}>Or choose a default sound:</Text>
       <FlatList
         data={defaultSounds}
-        keyExtractor={(item) => item.name}
+        keyExtractor={(item) => item.id}
         horizontal
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={styles.soundButton}
+            style={[
+              styles.soundButton,
+              {
+                backgroundColor: selectedSound?.name === item.name 
+                  ? theme.colors.primary + '40'
+                  : theme.dark ? '#333333' : '#e0e0e0'
+              }
+            ]}
             onPress={() => selectDefaultSound(item.file, item.name)}
           >
-            <Text>{item.name}</Text>
+            <Text style={[styles.soundButtonText, { color: theme.colors.text }]}>{item.name}</Text>
           </TouchableOpacity>
         )}
       />
@@ -254,18 +308,15 @@ const RecordScreen = () => {
             const updatedDate = new Date(date);
             // Update only date or time depending on mode
             if (pickerMode === 'date') {
-              const updatedDate = new Date(date);
               updatedDate.setFullYear(selectedDate.getFullYear());
               updatedDate.setMonth(selectedDate.getMonth());
               updatedDate.setDate(selectedDate.getDate());
-              //setDate(updatedDate);
             } else if (pickerMode === 'time') {
-              const updatedDate = new Date(date);
               updatedDate.setHours(selectedDate.getHours());
               updatedDate.setMinutes(selectedDate.getMinutes());
               updatedDate.setSeconds(0);
-              setDate(updatedDate);
             }
+              setDate(updatedDate);
           }
         }}
       />
@@ -283,15 +334,19 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 16,
+    backgroundColor: 'transparent',
+    borderRadius: 8,
   },
   dateButton: {
     marginBottom: 16,
+    borderRadius: 8,
   },
   switchContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 24,
+    paddingHorizontal: 8,
   },
   recordingContainer: {
     marginBottom: 16,
@@ -299,24 +354,28 @@ const styles = StyleSheet.create({
   },
   recordButton: {
     width: 200,
-    //height: 200,
     borderRadius: 50,
-    //justifyContent: 'center',
+    marginVertical: 16,
   },
   saveButton: {
     marginTop: 16,
+    borderRadius: 8,
   },
   soundButton: {
-    padding: 10,
+    padding: 12,
     marginHorizontal: 8,
-    backgroundColor: '#e0e0e0',
     borderRadius: 8,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  soundButtonText: {
+    textAlign: 'center',
   },
   modal: {
     backgroundColor: 'white',
     padding: 20,
     margin: 20,
-    borderRadius: 8,
+    borderRadius: 12,
   },
 });
 

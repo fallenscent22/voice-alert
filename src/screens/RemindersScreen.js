@@ -5,12 +5,13 @@ import { useIsFocused } from '@react-navigation/native';
 import { StorageService } from '../services/storage';
 import * as Notifications from 'expo-notifications';
 import { Audio } from 'expo-av';
+import { defaultSounds } from '../constants/sounds';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
   }),
 });
 
@@ -47,11 +48,11 @@ export default function RemindersScreen({ navigation }) {
 
   const handleNotification = async (notification) => {
     const reminderId = notification.request.content.data.reminderId;
-    const reminder = reminders.find(r => r.id === reminderId);
+    const reminder = await StorageService.getReminder(reminderId);
     if (reminder) {
       setCurrentReminder(reminder);
       setVisible(true);
-      playReminderSound(reminder.audioUri);
+      await playReminderSound(reminder.audioUri || reminder.selectedSound, reminder.selectedSound);
     }
   };
 
@@ -103,17 +104,33 @@ export default function RemindersScreen({ navigation }) {
     }
   };
 
-  const playReminderSound = async (uri) => {
+  const playReminderSound = async (uri, selectedSound) => {
     try {
-      const { sound } = await Audio.Sound.createAsync(
-        typeof uri === 'string' && uri.startsWith('file:')
-          ? { uri }
-          : uri
+      await stopPlayingSound();
+      
+      let soundSource;
+      if (uri && uri.startsWith('file:')) {
+        soundSource = { uri };
+      } else if (selectedSound) {
+        const defaultSound = defaultSounds.find(s => s.name === selectedSound);
+        if (defaultSound) {
+          soundSource = defaultSound.file;
+        }
+      }
+
+      if (!soundSource) {
+        throw new Error('Sound source not found');
+      }
+
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        soundSource,
+        { shouldPlay: true, volume: 1.0 }
       );
-      setSound(sound);
-      await sound.playAsync();
-    } catch (e) {
-      Alert.alert('Error', 'Failed to play reminder sound.');
+      setSound(newSound);
+      await newSound.playAsync();
+    } catch (error) {
+      console.error('Error playing sound:', error);
+      Alert.alert('Error', 'Failed to play reminder sound');
     }
   };
 
@@ -131,7 +148,10 @@ export default function RemindersScreen({ navigation }) {
           <Card style={styles.card}>
             <Card.Title title={item.title} subtitle={new Date(item.date).toLocaleString()} />
             <Card.Actions>
-              <IconButton icon="play" onPress={() => playReminderSound(item.audioUri)} />
+              <IconButton 
+                icon="play" 
+                onPress={() => playReminderSound(item.audioUri, item.selectedSound)} 
+              />
               <IconButton icon="pencil" onPress={() => navigation.navigate('Record', { reminder: item })} />
               <IconButton icon="delete" onPress={() => deleteReminder(item.id)} />
             </Card.Actions>
@@ -158,9 +178,45 @@ export default function RemindersScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 10,
+    padding: 16,
   },
   card: {
     marginVertical: 8,
+    elevation: 4,
+    borderRadius: 12,
+  },
+  cardContent: {
+    padding: 16,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  date: {
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 8,
+  },
+  button: {
+    marginLeft: 8,
+  },
+  dialog: {
+    borderRadius: 12,
+    padding: 20,
+  },
+  dialogTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  dialogActions: {
+    marginTop: 16,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
   },
 });

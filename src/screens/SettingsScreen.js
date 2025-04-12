@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { List, Switch, Divider } from 'react-native-paper';
+import { View, StyleSheet, Platform } from 'react-native';
+import { List, Switch, Divider, useTheme } from 'react-native-paper';
 import { StorageService } from '../services/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NotificationService } from '../services/notifications';
+import { EventRegister } from 'react-native-event-listeners';
 
 const SettingsScreen = () => {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const theme = useTheme();
 
   useEffect(() => {
     loadSettings();
@@ -46,9 +48,8 @@ const SettingsScreen = () => {
   const toggleDarkMode = async (value) => {
     try {
       setDarkMode(value);
-      // Uncomment the following line(below) if you want to use AsyncStorage for dark mode
-      //await AsyncStorage.setItem('darkMode', JSON.stringify(value));
-      await StorageService.setItem('darkMode', JSON.stringify(value));
+      await AsyncStorage.setItem('darkMode', value.toString());
+      EventRegister.emit('themeChange', value);
     } catch (error) {
       console.error('Error saving dark mode settings:', error);
     }
@@ -71,29 +72,33 @@ const SettingsScreen = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <List.Section>
-        <List.Subheader>Notifications</List.Subheader>
+        <List.Subheader style={{ color: theme.colors.text }}>Notifications</List.Subheader>
         <List.Item
           title="Enable Notifications"
           description="Receive reminders and alerts"
+          titleStyle={{ color: theme.colors.text }}
+          descriptionStyle={{ color: theme.colors.placeholder }}
           right={() => (
             <Switch
               value={notificationsEnabled}
               onValueChange={toggleNotifications}
-              color="#6200ee"
+              color={theme.colors.primary}
             />
           )}
         />
-        <Divider />
+        <Divider style={{ backgroundColor: theme.colors.placeholder }} />
         <List.Item
           title="Sound"
           description="Play sound when reminder triggers"
+          titleStyle={{ color: theme.colors.text }}
+          descriptionStyle={{ color: theme.colors.placeholder }}
           right={() => (
             <Switch
               value={soundEnabled}
               onValueChange={toggleSound}
-              color="#6200ee"
+              color={theme.colors.primary}
             />
           )}
         />
@@ -129,7 +134,29 @@ const SettingsScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f6f6f6',
+  },
+  section: {
+    marginBottom: 16,
+  },
+  sectionHeader: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    paddingHorizontal: 16,
+  },
+  item: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  itemText: {
+    fontSize: 16,
+  },
+  divider: {
+    height: 1,
+    marginVertical: 8,
   },
 });
 

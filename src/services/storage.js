@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
 
 const REMINDERS_KEY = '@vocal_reminder_reminders';
 
@@ -63,14 +64,10 @@ export const StorageService = {
         return [];
       }
       const reminders = JSON.parse(remindersJson);
-      const mappedReminders = reminders.map(reminder => ({
+      return reminders.map(reminder => ({
         ...reminder,
-        date: new Date(reminder.date),
-      }));
-
-      // Sort by upcoming date
-      mappedReminders.sort((a, b) => a.date - b.date);
-      return mappedReminders;
+        date: new Date(reminder.date).getTime(), // Store as timestamp
+      })).sort((a, b) => a.date - b.date);
     } catch (error) {
       console.error('Error getting reminders:', error);
       return [];
@@ -92,10 +89,23 @@ export const StorageService = {
     try {
       const reminders = await this.getReminders();
       const index = reminders.findIndex(r => r.id === reminder.id);
+      
       if (index !== -1) {
-        reminders[index] = reminder;
+        // Cancel old notification if exists
+        if (reminders[index].notificationId) {
+          await Notifications.cancelScheduledNotificationAsync(reminders[index].notificationId);
+        }
+        
+        // Replace the old reminder with the new one
+        reminders[index] = {
+          ...reminder,
+          date: reminder.date instanceof Date ? reminder.date.getTime() : reminder.date
+        };
+        
         await storage.setItem(REMINDERS_KEY, JSON.stringify(reminders));
+        return true;
       }
+      return false;
     } catch (error) {
       console.error('Error updating reminder:', error);
       throw error;

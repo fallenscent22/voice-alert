@@ -4,14 +4,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StorageService } from './storage';
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => {
-    const soundEnabled = await StorageService.getItem('soundEnabled');
-    return {
-      shouldShowAlert: true,
-      shouldPlaySound: Platform.OS !== 'web' ? JSON.parse(soundEnabled) : false,
-      shouldSetBadge: true,
-    };
-  },
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
 });
 
 export const NotificationService = {
@@ -28,34 +25,46 @@ export const NotificationService = {
   },
 
   async scheduleNotification(reminder) {
-    const trigger = new Date(reminder.date);
-    const now = new Date();
-    sound: Platform.OS !== 'web' ? true : undefined;
+    try {
+      if (reminder.notificationId) {
+        await this.cancelNotification(reminder.notificationId);
+      }
 
-    if (trigger <= now) {
-      throw new Error('Cannot schedule notification for past date');
+      const trigger = new Date(reminder.date);
+      
+      if (trigger <= new Date()) {
+        throw new Error('Cannot schedule notification for past date');
+      }
+
+      // Get the sound file based on the selected sound
+      let soundName = 'default';
+      if (reminder.selectedSound) {
+        soundName = reminder.selectedSound.toLowerCase().replace(/\s+/g, '') + '.mp3';
+      }
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: reminder.title,
+          body: 'Time for your reminder!',
+          sound: soundName,
+          priority: 'high',
+          data: { 
+            reminderId: reminder.id,
+            audioUri: reminder.audioUri,
+            selectedSound: reminder.selectedSound
+          },
+        },
+        trigger: {
+          date: trigger,
+          seconds: reminder.isRecurring ? 24 * 60 * 60 : undefined,
+        },
+      });
+
+      return notificationId;
+    } catch (error) {
+      console.error('Error scheduling notification:', error);
+      throw error;
     }
-
-    const notificationId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: reminder.title,
-        body: 'Time for your reminder!',
-        sound: true,
-      },
-      trigger: trigger, // where trigger is a Date object
-      // Trigger the notification at the specified date and time
-      trigger: {
-        repeats: true,
-        hour: trigger.getHours(),
-        minute: trigger.getMinutes(),
-        weekday: trigger.getDay(),
-        day: trigger.getDate(),
-        date: trigger,
-        channelId: 'reminders',
-      },
-    });
-
-    return notificationId;
   },
 
   async cancelNotification(notificationId) {
@@ -68,12 +77,13 @@ export const NotificationService = {
 
   async createNotificationChannel() {
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('reminders', {
-        name: 'Reminders',
-        importance: Notifications.AndroidImportance.MAX,
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'Default',
+        importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FF231F7C',
-        sound: 'default',
+        lightColor: '#4A90E2',
+        sound: true,
+        enableVibrate: true,
       });
     }
   },
