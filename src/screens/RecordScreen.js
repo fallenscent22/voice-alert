@@ -3,7 +3,7 @@ import { View, StyleSheet, Alert, FlatList, TouchableOpacity} from 'react-native
 import { Text, Button, TextInput, Switch, Portal, Modal, useTheme } from 'react-native-paper';
 import { Audio } from 'expo-av';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, } from '@react-navigation/native';
 import { StorageService } from '../services/storage';
 import * as Notifications from 'expo-notifications';
 
@@ -40,6 +40,7 @@ const RecordScreen = () => {
   const [selectedSound, setSelectedSound] = useState(null); 
   const [isEditing, setIsEditing] = useState(false);
   const [editingReminderId, setEditingReminderId] = useState(null);
+
 // Stop & unload sound helper
 useEffect(() => {
   if (route.params?.reminder) {
@@ -53,27 +54,32 @@ useEffect(() => {
     setEditingReminderId(reminder.id);
   }
 
+  const unsubscribe = navigation.addListener('beforeRemove', () => {
+    cleanup();
+  });
+
   return () => {
-    if (recording) recording.stopAndUnloadAsync();
-    if (playingSound) {
-      playingSound.stopAsync().then(() => playingSound.unloadAsync());
-    }
-    stopAndUnloadSound();
+    unsubscribe();
+    cleanup();
   };
 }, []);
 
-
-const stopAndUnloadSound = async () => {
-  if (playingSound) {
-    try {
+const cleanup = async () => {
+  try {
+    if (recording) {
+      await recording.stopAndUnloadAsync();
+      setRecording(null);
+    }
+    if (playingSound) {
       await playingSound.stopAsync();
       await playingSound.unloadAsync();
-    } catch (err) {
-      console.log("Error stopping sound:", err);
+      setPlayingSound(null);
     }
-    setPlayingSound(null);
+  } catch (error) {
+    console.error("Cleanup error:", error);
   }
 };
+
 
   const startRecording = async () => {
     try {
@@ -82,6 +88,8 @@ const stopAndUnloadSound = async () => {
         Alert.alert('Permission Required', 'Please allow microphone access to record reminders.');
         return;
       }
+
+      await cleanup();
 
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
@@ -106,6 +114,7 @@ const stopAndUnloadSound = async () => {
       const uri = recording.getURI();
       setAudioUri(uri);
       setRecording(null);
+      setIsRecording(false);
       setSelectedSound(null); // unselect default sound if manual recording is made
     } catch (err) {
       Alert.alert('Error', 'Failed to stop recording');
@@ -153,9 +162,8 @@ const stopAndUnloadSound = async () => {
     }
   };
 
-  const generateUniqueId = () => {
-    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  };
+  const generateUniqueId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
 
   const saveReminder = async () => {
     if (!title || !date || (!audioUri && !selectedSound)) {
@@ -164,7 +172,7 @@ const stopAndUnloadSound = async () => {
     }
 
     try {
-      await stopAndUnloadSound();
+      await cleanup();
       
       const reminder = {
         id: editingReminderId || generateUniqueId(),
@@ -190,11 +198,10 @@ const stopAndUnloadSound = async () => {
   };
 
   const selectDefaultSound = async (soundFile, soundName) => {
-    if (recording) return;
+    if (isRecording) return;
     try {
       // Stop any currently playing sound
-      await stopAndUnloadSound();
-
+      await cleanup();
       const { sound } = await Audio.Sound.createAsync(soundFile);
       setPlayingSound(sound);
       await sound.playAsync();
@@ -219,8 +226,13 @@ const stopAndUnloadSound = async () => {
         label="Reminder Title"
         value={title}
         onChangeText={setTitle}
-        style={styles.input}
-        theme={{ colors: { text: theme.colors.text } }}
+        style={[styles.input,{ borderColor: theme.colors.primary }]}
+        theme={{ colors: {
+          text: theme.colors.text,
+          primary: theme.colors.primary, // active label & underline color
+          placeholder: theme.colors.placeholder,
+          background: 'transparent',}}
+        }
         textColor={theme.colors.text}
         placeholderTextColor={theme.colors.placeholder}
       />
