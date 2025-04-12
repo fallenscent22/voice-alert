@@ -77,7 +77,12 @@ const stopAndUnloadSound = async () => {
 
   const startRecording = async () => {
     try {
-      await Audio.requestPermissionsAsync();
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow microphone access to record reminders.');
+        return;
+      }
+
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -88,9 +93,8 @@ const stopAndUnloadSound = async () => {
       );
       setRecording(recording);
       setIsRecording(true);
-      await recording.startAsync();
     } catch (err) {
-      Alert.alert('Error', 'Failed to start recording');
+      Alert.alert('Error', 'Failed to start recording. Please try again.');
     }
   };
 
@@ -216,32 +220,37 @@ const stopAndUnloadSound = async () => {
         value={title}
         onChangeText={setTitle}
         style={styles.input}
+        theme={{ colors: { text: theme.colors.text } }}
+        textColor={theme.colors.text}
+        placeholderTextColor={theme.colors.placeholder}
       />
 
       <Button
         mode="outlined"
         onPress={() => {
-        setPickerMode('date');
-        setShowPicker(true);
-      }}
-      style={styles.dateButton}
+          setPickerMode('date');
+          setShowPicker(true);
+        }}
+        style={[styles.dateButton, { borderColor: theme.colors.primary }]}
+        textColor={theme.colors.text}
       >
-      {date.toDateString()}
+        {date.toDateString()}
       </Button>
 
       <Button
-      mode="outlined"
-      onPress={() => {
-      setPickerMode('time');
-      setShowPicker(true);
-      }}
-     style={styles.dateButton}
-    >
-     {date.toLocaleTimeString()}
-    </Button>
+        mode="outlined"
+        onPress={() => {
+          setPickerMode('time');
+          setShowPicker(true);
+        }}
+        style={[styles.dateButton, { borderColor: theme.colors.primary }]}
+        textColor={theme.colors.text}
+      >
+        {date.toLocaleTimeString()}
+      </Button>
 
       <View style={styles.switchContainer}>
-        <Text>Recurring Reminder</Text>
+        <Text style={{ color: theme.colors.text }}>Recurring Reminder</Text>
         <Switch
           value={isRecurring}
           onValueChange={setIsRecurring}
@@ -254,13 +263,15 @@ const stopAndUnloadSound = async () => {
           mode="contained"
           onPress={isRecording ? stopRecording : startRecording}
           icon={isRecording ? 'stop' : 'microphone'}
-          style={styles.recordButton}
+          style={[styles.recordButton, { backgroundColor: theme.colors.primary }]}
         >
           {isRecording ? 'Stop Recording' : 'Start Recording'}
         </Button>
       </View>
 
-      <Text style={{ marginVertical: 12 }}>Or choose a default sound:</Text>
+      <Text style={{ marginVertical: 12, color: theme.colors.text }}>
+        Or choose a default sound:
+      </Text>
       <FlatList
         data={defaultSounds}
         keyExtractor={(item) => item.id}
@@ -272,12 +283,12 @@ const stopAndUnloadSound = async () => {
               {
                 backgroundColor: selectedSound?.name === item.name 
                   ? theme.colors.primary + '40'
-                  : theme.dark ? '#333333' : '#e0e0e0'
+                  : theme.dark ? theme.colors.surface : '#e0e0e0'
               }
             ]}
             onPress={() => selectDefaultSound(item.file, item.name)}
           >
-            <Text style={[styles.soundButtonText, { color: theme.colors.text }]}>{item.name}</Text>
+            <Text style={{ color: theme.colors.text }}>{item.name}</Text>
           </TouchableOpacity>
         )}
       />
@@ -285,44 +296,44 @@ const stopAndUnloadSound = async () => {
       <Button
         mode="contained"
         onPress={saveReminder}
-        style={styles.saveButton}
-        disabled={ !title || (!audioUri && !selectedSound) }
+        style={[styles.saveButton, { backgroundColor: theme.colors.primary }]}
+        disabled={!title || (!audioUri && !selectedSound)}
       >
         Save Reminder
       </Button>
 
       <Portal>
         <Modal
-        visible={showPicker}
-        onDismiss={() => setShowPicker(false)}
-        contentContainerStyle={styles.modal}
+          visible={showPicker}
+          onDismiss={() => setShowPicker(false)}
+          contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}
         >
-        {showPicker && (
-        <DateTimePicker
-        value={date}
-        mode={pickerMode}
-        display="default"
-        onChange={(event, selectedDate) => {
-          setShowPicker(false);
-          if (selectedDate) {
-            const updatedDate = new Date(date);
-            // Update only date or time depending on mode
-            if (pickerMode === 'date') {
-              updatedDate.setFullYear(selectedDate.getFullYear());
-              updatedDate.setMonth(selectedDate.getMonth());
-              updatedDate.setDate(selectedDate.getDate());
-            } else if (pickerMode === 'time') {
-              updatedDate.setHours(selectedDate.getHours());
-              updatedDate.setMinutes(selectedDate.getMinutes());
-              updatedDate.setSeconds(0);
-            }
-              setDate(updatedDate);
-          }
-        }}
-      />
-    )}
-   </Modal>
-    </Portal>
+          {showPicker && (
+            <DateTimePicker
+              value={date}
+              mode={pickerMode}
+              display="default"
+              onChange={(event, selectedDate) => {
+                setShowPicker(false);
+                if (selectedDate) {
+                  const updatedDate = new Date(date);
+                  if (pickerMode === 'date') {
+                    updatedDate.setFullYear(selectedDate.getFullYear());
+                    updatedDate.setMonth(selectedDate.getMonth());
+                    updatedDate.setDate(selectedDate.getDate());
+                  } else if (pickerMode === 'time') {
+                    updatedDate.setHours(selectedDate.getHours());
+                    updatedDate.setMinutes(selectedDate.getMinutes());
+                    updatedDate.setSeconds(0);
+                  }
+                  setDate(updatedDate);
+                }
+              }}
+              style={{ backgroundColor: theme.colors.surface }}
+            />
+          )}
+        </Modal>
+      </Portal>
     </View>
   );
 };
@@ -367,9 +378,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     minWidth: 120,
     alignItems: 'center',
-  },
-  soundButtonText: {
-    textAlign: 'center',
   },
   modal: {
     backgroundColor: 'white',

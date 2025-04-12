@@ -79,52 +79,56 @@ const SettingsScreen = () => {
           title="Enable Notifications"
           description="Receive reminders and alerts"
           titleStyle={{ color: theme.colors.text }}
-          descriptionStyle={{ color: theme.colors.placeholder }}
+          descriptionStyle={{ color: theme.colors.subtext }}
           right={() => (
             <Switch
               value={notificationsEnabled}
               onValueChange={toggleNotifications}
-              color={theme.colors.primary}
+              color={theme.colors.button}
             />
           )}
         />
-        <Divider style={{ backgroundColor: theme.colors.placeholder }} />
+        <Divider style={{ backgroundColor: theme.colors.border }} />
         <List.Item
           title="Sound"
           description="Play sound when reminder triggers"
           titleStyle={{ color: theme.colors.text }}
-          descriptionStyle={{ color: theme.colors.placeholder }}
+          descriptionStyle={{ color: theme.colors.subtext }}
           right={() => (
             <Switch
               value={soundEnabled}
               onValueChange={toggleSound}
-              color={theme.colors.primary}
+              color={theme.colors.button}
             />
           )}
         />
       </List.Section>
 
       <List.Section>
-        <List.Subheader>Appearance</List.Subheader>
+        <List.Subheader style={{ color: theme.colors.text }}>Appearance</List.Subheader>
         <List.Item
           title="Dark Mode"
           description="Use dark theme"
+          titleStyle={{ color: theme.colors.text }}
+          descriptionStyle={{ color: theme.colors.subtext }}
           right={() => (
             <Switch
               value={darkMode}
               onValueChange={toggleDarkMode}
-              color="#6200ee"
+              color={theme.colors.button}
             />
           )}
         />
       </List.Section>
 
       <List.Section>
-        <List.Subheader>About</List.Subheader>
+        <List.Subheader style={{ color: theme.colors.text }}>About</List.Subheader>
         <List.Item
           title="Version"
           description="1.0.0"
-          left={props => <List.Icon {...props} icon="information" />}
+          titleStyle={{ color: theme.colors.text }}
+          descriptionStyle={{ color: theme.colors.subtext }}
+          left={props => <List.Icon {...props} icon="information" color={theme.colors.text} />}
         />
       </List.Section>
     </View>

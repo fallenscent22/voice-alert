@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StorageService } from './storage';
+import { defaultSounds } from '../constants/sounds';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -39,7 +40,10 @@ export const NotificationService = {
       // Get the sound file based on the selected sound
       let soundName = 'default';
       if (reminder.selectedSound) {
-        soundName = reminder.selectedSound.toLowerCase().replace(/\s+/g, '') + '.mp3';
+        const sound = defaultSounds.find(s => s.name === reminder.selectedSound);
+        if (sound) {
+          soundName = sound.file;
+        }
       }
 
       const notificationId = await Notifications.scheduleNotificationAsync({

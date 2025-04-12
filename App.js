@@ -66,11 +66,15 @@ export default function App() {
       background: '#121212',
       surface: '#1E1E1E',
       text: '#FFFFFF',
+      subtext: '#E0E0E0',  // For secondary text
       placeholder: '#9E9E9E',
       backdrop: 'rgba(0,0,0,0.5)',
       notification: '#ff79b0',
       card: '#1E1E1E',
       border: '#2C2C2C',
+      button: '#4A90E2',
+      buttonText: '#FFFFFF',
+      tabBar: '#1E1E1E',
       elevation: {
         level2: 'rgba(255, 255, 255, 0.08)',
         level3: 'rgba(255, 255, 255, 0.12)',

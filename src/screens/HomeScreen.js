@@ -4,12 +4,13 @@ import { Text, Card, FAB } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { StorageService } from '../services/storage';
 import { useIsFocused } from '@react-navigation/native';
+import { useTheme } from '@react-navigation/native';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
   const [reminders, setReminders] = useState([]);
   const isFocused = useIsFocused();
-
+  const theme = useTheme();
 
   useEffect(() => {
     if (isFocused) {
@@ -26,33 +27,37 @@ const HomeScreen = () => {
     }
   };
 
-  const renderReminder = ({ item }) => (
-    <Card style={styles.reminderCard} onPress={() => navigation.navigate('Record', { reminder: item })}>
-      <Card.Content>
-        <Text variant="titleMedium">{item.title}</Text>
-        <Text variant="bodyMedium">
-          {new Date(item.date).toLocaleString()}
-        </Text>
-        {item.isRecurring && (
-          <Text variant="bodySmall" style={styles.recurringText}>
-            Recurring
-          </Text>
-        )}
-      </Card.Content>
-    </Card>
-  );
-
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <FlatList
         data={reminders}
-        renderItem={renderReminder}
+        renderItem={({ item }) => (
+          <Card 
+            style={[styles.reminderCard, { backgroundColor: theme.colors.surface }]}
+            onPress={() => navigation.navigate('Record', { reminder: item })}
+          >
+            <Card.Content>
+              <Text style={{ color: theme.colors.text, fontSize: 18, fontWeight: 'bold' }}>
+                {item.title}
+              </Text>
+              <Text style={{ color: theme.colors.subtext, marginTop: 4 }}>
+                {new Date(item.date).toLocaleString()}
+              </Text>
+              {item.isRecurring && (
+                <Text style={{ color: theme.colors.primary, marginTop: 4 }}>
+                  Recurring
+                </Text>
+              )}
+            </Card.Content>
+          </Card>
+        )}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
       />
       <FAB
         icon="plus"
-        style={styles.fab}
+        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+        color={theme.colors.buttonText}
         onPress={() => navigation.navigate('Record')}
       />
     </View>
@@ -62,24 +67,22 @@ const HomeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f6f6f6',
+    padding: 16,
   },
   listContainer: {
-    padding: 16,
+    padding: 8,
   },
   reminderCard: {
     marginBottom: 12,
     elevation: 2,
-  },
-  recurringText: {
-    color: '#6200ee',
-    marginTop: 4,
+    borderRadius: 12,
   },
   fab: {
     position: 'absolute',
     margin: 16,
     right: 0,
     bottom: 0,
+    borderRadius: 28,
   },
 });
 

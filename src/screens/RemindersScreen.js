@@ -6,6 +6,7 @@ import { StorageService } from '../services/storage';
 import * as Notifications from 'expo-notifications';
 import { Audio } from 'expo-av';
 import { defaultSounds } from '../constants/sounds';
+import { useTheme } from '@react-navigation/native';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -22,6 +23,7 @@ export default function RemindersScreen({ navigation }) {
   const [visible, setVisible] = useState(false);
   const [sound, setSound] = useState(null);
   const appState = useRef(AppState.currentState);
+  const theme = useTheme();
 
   useEffect(() => {
     if (isFocused) loadReminders();
@@ -140,34 +142,66 @@ export default function RemindersScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <FlatList
         data={reminders}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <Card style={styles.card}>
-            <Card.Title title={item.title} subtitle={new Date(item.date).toLocaleString()} />
+          <Card style={[styles.card, { backgroundColor: theme.colors.surface }]}>
+            <Card.Title
+              title={item.title}
+              subtitle={new Date(item.date).toLocaleString()}
+              titleStyle={{ color: theme.colors.text }}
+              subtitleStyle={{ color: theme.colors.subtext }}
+            />
             <Card.Actions>
               <IconButton 
                 icon="play" 
+                iconColor={theme.colors.primary}
                 onPress={() => playReminderSound(item.audioUri, item.selectedSound)} 
               />
-              <IconButton icon="pencil" onPress={() => navigation.navigate('Record', { reminder: item })} />
-              <IconButton icon="delete" onPress={() => deleteReminder(item.id)} />
+              <IconButton
+                icon="pencil"
+                iconColor={theme.colors.primary}
+                onPress={() => navigation.navigate('Record', { reminder: item })}
+              />
+              <IconButton
+                icon="delete"
+                iconColor={theme.colors.primary}
+                onPress={() => deleteReminder(item.id)}
+              />
             </Card.Actions>
           </Card>
         )}
       />
 
       <Portal>
-        <Dialog visible={visible} onDismiss={() => setVisible(false)}>
-          <Dialog.Title>{currentReminder?.title}</Dialog.Title>
+        <Dialog
+          visible={visible}
+          onDismiss={() => setVisible(false)}
+          style={{ backgroundColor: theme.colors.surface }}
+        >
+          <Dialog.Title style={{ color: theme.colors.text }}>
+            {currentReminder?.title}
+          </Dialog.Title>
           <Dialog.Content>
-            <Paragraph>It's time for your reminder!</Paragraph>
+            <Paragraph style={{ color: theme.colors.text }}>
+              It's time for your reminder!
+            </Paragraph>
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => snoozeReminder(currentReminder.id)}>Snooze 15 mins</Button>
-            <Button onPress={() => stopReminder(currentReminder.id)}>Stop</Button>
+            <Button
+              onPress={() => snoozeReminder(currentReminder.id)}
+              textColor={theme.colors.primary}
+            >
+              Snooze 15 mins
+            </Button>
+            <Button
+              onPress={() => stopReminder(currentReminder.id)}
+              textColor={theme.colors.primary}
+            >
+              Stop
+            </Button>
           </Dialog.Actions>
         </Dialog>
       </Portal>
