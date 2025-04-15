@@ -4,9 +4,10 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Provider as PaperProvider, DefaultTheme as PaperDefaultTheme, DarkTheme as PaperDarkTheme } from 'react-native-paper';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, useColorScheme } from 'react-native';
+import { AppState, useColorScheme, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { Alert } from 'react-native';
+import { Audio } from 'expo-av';
 import { EventRegister } from 'react-native-event-listeners';
 
 // Screens
@@ -18,8 +19,20 @@ import SettingsScreen from './src/screens/SettingsScreen';
 // Services
 import { StorageService } from './src/services/storage';
 import { NotificationService } from './src/services/notifications';
+import AndroidService from './src/services/AndroidService'; // Fix the import path
+
 
 const Tab = createBottomTabNavigator();
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    priority: 'max',
+    presentationOptions: ['alert', 'sound'],
+  }),
+});
 
 export default function App() {
   const scheme = useColorScheme();
@@ -106,24 +119,104 @@ export default function App() {
     }
   };
 
-  // Setup notifications
+  // Update the audio configuration
+  useEffect(() => {
+    const configureAudio = async () => {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          staysActiveInBackground: true,
+          // Fix iOS interruption mode
+          interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_MIX_WITH_OTHERS,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DUCK_OTHERS,
+          playThroughEarpieceAndroid: false,
+        });
+      } catch (error) {
+        console.error('Error configuring audio:', error);
+      }
+    };
+
+    configureAudio();
+  }, []);
+
+  // Configure notification categories/channels with actions
   useEffect(() => {
     const setupNotifications = async () => {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please enable notifications to use reminders');
-      }
+      // Set up notification actions
+      await Notifications.setNotificationCategoryAsync('reminder', [
+        {
+          identifier: 'SNOOZE',
+          buttonTitle: 'Snooze (15min)',
+          options: {
+            isDestructive: false,
+            isAuthenticationRequired: false,
+          },
+        },
+        {
+          identifier: 'STOP',
+          buttonTitle: 'Stop',
+          options: {
+            isDestructive: true,
+            isAuthenticationRequired: false,
+          },
+        },
+      ]);
 
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FF231F7C',
-      });
+      // Set up Android channel
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('reminders', {
+          name: 'Reminders',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#FF231F7C',
+          sound: true,
+          enableVibrate: true,
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          showBadge: true,
+        });
+      }
     };
 
     setupNotifications();
   }, []);
+
+  // Add notification handlers
+  const handleNotification = async (notification) => {
+    const data = notification.request.content.data;
+    
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+
+      if (data.selectedSound) {
+        const soundFile = defaultSounds.find(s => s.name === data.selectedSound)?.file;
+        if (soundFile) {
+          const { sound } = await Audio.Sound.createAsync(soundFile, { shouldPlay: true });
+          await sound.playAsync();
+        }
+      } else if (data.audioUri) {
+        const { sound } = await Audio.Sound.createAsync({ uri: data.audioUri }, { shouldPlay: true });
+        await sound.playAsync();
+      }
+    } catch (error) {
+      console.error('Error playing notification sound:', error);
+    }
+  };
+
+  const handleNotificationResponse = async (response) => {
+    // Handle notification interaction
+    const data = response.notification.request.content.data;
+    if (data.reminderId) {
+      // Navigate to reminder details or handle snooze/stop
+    }
+  };
 
   const theme = isDarkMode ? CombinedDarkTheme : CombinedDefaultTheme;
 
@@ -132,6 +225,11 @@ export default function App() {
       Notifications.requestPermissionsAsync();
       await NotificationService.requestPermissions();
       await NotificationService.createNotificationChannel();
+      
+      // Initialize Android service for background audio
+      if (Platform.OS === 'android') {
+        AndroidService.startService();
+      }
     };
     
     setupApp();
@@ -157,6 +255,10 @@ export default function App() {
 
     return () => {
       subscription.remove();
+      // Cleanup service on app unmount
+      if (Platform.OS === 'android') {
+        AndroidService.stopService();
+      }
     };
   }, []);
 

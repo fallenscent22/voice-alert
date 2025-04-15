@@ -1,4 +1,4 @@
-package com.anonymous.vocalreminder
+package com.sassycoders.vocalreminder
 
 import android.os.Build
 import android.os.Bundle

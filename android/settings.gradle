@@ -1,4 +1,4 @@
-rootProject.name = 'VocalReminder'
+rootProject.name = 'Vocal Reminder'
 
 dependencyResolutionManagement {
   versionCatalogs {

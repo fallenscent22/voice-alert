@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, FlatList, Alert, AppState } from 'react-native';
+import { View, StyleSheet, FlatList, Alert, AppState, Platform } from 'react-native';
 import { Text, Button, Card, IconButton, Portal, Dialog, Paragraph } from 'react-native-paper';
 import { useIsFocused } from '@react-navigation/native';
 import { StorageService } from '../services/storage';
@@ -7,6 +7,7 @@ import * as Notifications from 'expo-notifications';
 import { Audio } from 'expo-av';
 import { defaultSounds } from '../constants/sounds';
 import { useTheme } from '@react-navigation/native';
+import AndroidService from '../services/AndroidService';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -54,48 +55,105 @@ export default function RemindersScreen({ navigation }) {
     if (reminder) {
       setCurrentReminder(reminder);
       setVisible(true);
-      await playReminderSound(reminder.audioUri || reminder.selectedSound, reminder.selectedSound);
+      await playReminderSound(reminder.audioUri, reminder.selectedSound);
     }
   };
 
   const handleNotificationResponse = async (response) => {
-    const reminderId = response.notification.request.content.data.reminderId;
-    const action = response.actionIdentifier;
+    const data = response.notification.request.content.data;
+    const actionId = response.actionIdentifier;
 
-    if (action === 'SNOOZE') {
-      snoozeReminder(reminderId);
-    } else if (action === 'STOP') {
-      stopReminder(reminderId);
+    if (actionId === 'SNOOZE') {
+      await handleSnooze(data.reminderId);
+    } else if (actionId === 'STOP') {
+      await handleStop(data.reminderId);
     }
   };
 
-  const snoozeReminder = async (reminderId) => {
-    const reminder = reminders.find(r => r.id === reminderId);
-    if (!reminder) return;
+  const handleSnooze = async (reminderId) => {
+    try {
+      const reminder = await StorageService.getReminder(reminderId);
+      if (!reminder) return;
 
-    const newDate = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes later
-    const newNotificationId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: reminder.title,
-        body: 'Reminder Snoozed',
-        data: { reminderId: reminder.id },
-      },
-      trigger: newDate,
-    });
+      // Cancel current notification
+      if (reminder.notificationId) {
+        await Notifications.cancelScheduledNotificationAsync(reminder.notificationId);
+      }
 
-    reminder.date = newDate;
-    reminder.notificationId = newNotificationId;
+      // Schedule new notification 15 minutes later
+      const newDate = new Date(Date.now() + 15 * 60 * 1000);
+      const newReminder = {
+        ...reminder,
+        date: newDate.getTime(),
+      };
 
-    await StorageService.updateReminder(reminder);
-    loadReminders();
-    stopPlayingSound();
-    setVisible(false);
+      const notificationId = await scheduleNotification(newReminder);
+      if (notificationId) {
+        newReminder.notificationId = notificationId;
+        await StorageService.updateReminder(newReminder);
+        await stopPlayingSound();
+      }
+    } catch (error) {
+      console.error('Error snoozing reminder:', error);
+    }
   };
 
-  const stopReminder = async (reminderId) => {
-    stopPlayingSound();
-    setVisible(false);
-    await Notifications.cancelAllScheduledNotificationsAsync(); // optional: or cancel specific one
+  const handleStop = async (reminderId) => {
+    try {
+      const reminder = await StorageService.getReminder(reminderId);
+      if (reminder?.notificationId) {
+        await Notifications.cancelScheduledNotificationAsync(reminder.notificationId);
+      }
+      await stopPlayingSound();
+    } catch (error) {
+      console.error('Error stopping reminder:', error);
+    }
+  };
+
+  const scheduleNotification = async (reminder) => {
+    try {
+      if (reminder.notificationId) {
+        await Notifications.cancelScheduledNotificationAsync(reminder.notificationId);
+      }
+
+      const triggerDate = new Date(reminder.date);
+      if (triggerDate <= new Date()) {
+        Alert.alert('Invalid Date', 'Please select a future date and time.');
+        return false;
+      }
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: reminder.title,
+          body: 'Time for your reminder!',
+          data: { 
+            reminderId: reminder.id,
+            audioUri: reminder.audioUri,
+            selectedSound: reminder.selectedSound
+          },
+          sound: true,
+          priority: 'max',
+          categoryIdentifier: 'reminder',
+          // Android specific
+          android: {
+            channelId: 'reminders',
+            priority: 'max',
+            sticky: true,
+            fullScreenIntent: true, // This makes it appear on screen
+          },
+        },
+        trigger: {
+          date: triggerDate,
+          seconds: reminder.isRecurring ? 24 * 60 * 60 : undefined,
+        },
+      });
+
+      return notificationId;
+    } catch (error) {
+      console.error('Error scheduling notification:', error);
+      Alert.alert('Error', 'Failed to schedule notification');
+      return false;
+    }
   };
 
   const stopPlayingSound = async () => {
@@ -109,6 +167,11 @@ export default function RemindersScreen({ navigation }) {
   const playReminderSound = async (uri, selectedSound) => {
     try {
       await stopPlayingSound();
+      
+      // Start foreground service for Android
+      if (Platform.OS === 'android') {
+        AndroidService.startService();
+      }
       
       let soundSource;
       if (uri && uri.startsWith('file:')) {
@@ -129,6 +192,17 @@ export default function RemindersScreen({ navigation }) {
         { shouldPlay: true, volume: 1.0 }
       );
       setSound(newSound);
+      
+      // Add completion handler
+      newSound.setOnPlaybackStatusUpdate(async (status) => {
+        if (status.didJustFinish) {
+          await stopPlayingSound();
+          if (Platform.OS === 'android') {
+            AndroidService.stopService();
+          }
+        }
+      });
+      
       await newSound.playAsync();
     } catch (error) {
       console.error('Error playing sound:', error);
@@ -191,13 +265,13 @@ export default function RemindersScreen({ navigation }) {
           </Dialog.Content>
           <Dialog.Actions>
             <Button
-              onPress={() => snoozeReminder(currentReminder.id)}
+              onPress={() => handleSnooze(currentReminder.id)}
               textColor={theme.colors.primary}
             >
               Snooze 15 mins
             </Button>
             <Button
-              onPress={() => stopReminder(currentReminder.id)}
+              onPress={() => handleStop(currentReminder.id)}
               textColor={theme.colors.primary}
             >
               Stop

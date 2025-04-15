@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Alert, FlatList, TouchableOpacity} from 'react-native';
+import { View, StyleSheet, Alert, FlatList, TouchableOpacity, Platform } from 'react-native';
 import { Text, Button, TextInput, Switch, Portal, Modal, useTheme } from 'react-native-paper';
 import { Audio } from 'expo-av';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute, } from '@react-navigation/native';
 import { StorageService } from '../services/storage';
 import * as Notifications from 'expo-notifications';
+import AndroidService from '../services/AndroidService';
 
 const defaultSounds = [
   {id: '1', name: 'Anime Wow', file: require('../../assets/sounds/Animewow.mp3')},
@@ -200,10 +201,36 @@ const cleanup = async () => {
   const selectDefaultSound = async (soundFile, soundName) => {
     if (isRecording) return;
     try {
-      // Stop any currently playing sound
       await cleanup();
-      const { sound } = await Audio.Sound.createAsync(soundFile);
+      
+      // Configure audio mode first
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+      
+      if (Platform.OS === 'android') {
+        AndroidService.startService();
+      }
+      
+      const { sound } = await Audio.Sound.createAsync(
+        soundFile,
+        { shouldPlay: true, volume: 1.0 }
+      );
       setPlayingSound(sound);
+      
+      sound.setOnPlaybackStatusUpdate(async (status) => {
+        if (status.didJustFinish) {
+          await cleanup();
+          if (Platform.OS === 'android') {
+            AndroidService.stopService();
+          }
+        }
+      });
+      
       await sound.playAsync();
 
       setSelectedSound({
@@ -211,8 +238,6 @@ const cleanup = async () => {
         name: soundName,
         file: soundFile,
       });
-
-      setAudioUri(null); // Optional: unset recording URI if a default sound is selected
     } catch (error) {
       console.error('Sound playback error:', error);
       Alert.alert('Error', 'Failed to play sound');

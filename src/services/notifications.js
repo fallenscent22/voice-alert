@@ -2,14 +2,61 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StorageService } from './storage';
+import { Audio } from 'expo-av';
 import { defaultSounds } from '../constants/sounds';
+import AndroidService from './AndroidService';
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
+  handleNotification: async (notification) => {
+    const data = notification.request.content.data;
+    
+    if (Platform.OS === 'android') {
+      AndroidService.startService();
+    }
+
+    if (data.reminderId) {
+      await NotificationService.cancelNotification(data.reminderId);
+    }
+
+    const trigger = new Date(data.date);
+    if (trigger <= new Date()) {
+      throw new Error('Cannot schedule notification for past date');
+    }
+
+    let notificationContent = {
+      title: data.title,
+      body: 'Time for your reminder!',
+      data: { 
+        reminderId: data.reminderId,
+        audioUri: data.audioUri,
+        selectedSound: data.selectedSound
+      },
+      priority: 'high',
+    };
+
+    // Handle sound configuration
+    if (data.selectedSound) {
+      // For default sounds, use the system notification sound
+      notificationContent.sound = data.selectedSound.toLowerCase().replace(/\s+/g, '_');
+    } else if (data.audioUri) {
+      // For recorded sounds, we'll play them manually when notification is received
+      notificationContent.sound = 'null'; // Prevent default system sound
+    }
+
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: notificationContent,
+      trigger: {
+        date: trigger,
+        seconds: data.isRecurring ? 24 * 60 * 60 : undefined,
+      },
+    });
+
+    if (Platform.OS === 'android') {
+      AndroidService.stopService();
+    }
+
+    return notificationId;
+  },
 });
 
 export const NotificationService = {
@@ -32,32 +79,32 @@ export const NotificationService = {
       }
 
       const trigger = new Date(reminder.date);
-      
       if (trigger <= new Date()) {
         throw new Error('Cannot schedule notification for past date');
       }
 
-      // Get the sound file based on the selected sound
-      let soundName = 'default';
+      let notificationContent = {
+        title: reminder.title,
+        body: 'Time for your reminder!',
+        data: { 
+          reminderId: reminder.id,
+          audioUri: reminder.audioUri,
+          selectedSound: reminder.selectedSound
+        },
+        priority: 'high',
+      };
+
+      // Handle sound configuration
       if (reminder.selectedSound) {
-        const sound = defaultSounds.find(s => s.name === reminder.selectedSound);
-        if (sound) {
-          soundName = sound.file;
-        }
+        // For default sounds, use the system notification sound
+        notificationContent.sound = reminder.selectedSound.toLowerCase().replace(/\s+/g, '_');
+      } else if (reminder.audioUri) {
+        // For recorded sounds, we'll play them manually when notification is received
+        notificationContent.sound = 'null'; // Prevent default system sound
       }
 
       const notificationId = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: reminder.title,
-          body: 'Time for your reminder!',
-          sound: soundName,
-          priority: 'high',
-          data: { 
-            reminderId: reminder.id,
-            audioUri: reminder.audioUri,
-            selectedSound: reminder.selectedSound
-          },
-        },
+        content: notificationContent,
         trigger: {
           date: trigger,
           seconds: reminder.isRecurring ? 24 * 60 * 60 : undefined,
@@ -81,8 +128,8 @@ export const NotificationService = {
 
   async createNotificationChannel() {
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'Default',
+      await Notifications.setNotificationChannelAsync('reminders', {
+        name: 'Reminders',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#4A90E2',

@@ -27,7 +27,7 @@ const webStorage = {
 // Use webStorage for web platform, AsyncStorage for native platforms
 const storage = Platform.OS === 'web' ? webStorage : AsyncStorage;
 
-export const StorageService = {
+ export const StorageService = {
   async getItem(key) {
     try {
       return await storage.getItem(key);
@@ -71,6 +71,16 @@ export const StorageService = {
     } catch (error) {
       console.error('Error getting reminders:', error);
       return [];
+    }
+  },
+
+  async getReminder(id) {
+    try {
+      const reminders = await this.getReminders();
+      return reminders.find(reminder => reminder.id === id);
+    } catch (error) {
+      console.error('Error getting reminder by ID:', error);
+      return null;
     }
   },
 
