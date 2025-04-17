@@ -9,6 +9,7 @@ import * as Notifications from 'expo-notifications';
 import { Alert } from 'react-native';
 import { Audio } from 'expo-av';
 import { EventRegister } from 'react-native-event-listeners';
+import { defaultSounds } from './src/constants/sounds';
 
 // Screens
 import HomeScreen from './src/screens/HomeScreen';
@@ -21,6 +22,10 @@ import { StorageService } from './src/services/storage';
 import { NotificationService } from './src/services/notifications';
 import AndroidService from './src/services/AndroidService'; // Fix the import path
 
+import { AppRegistry } from 'react-native';
+import { name as appName } from './app.json'; // Ensure app.json exists and has the correct "name"
+
+AppRegistry.registerComponent(appName, () => App);
 
 const Tab = createBottomTabNavigator();
 
@@ -37,6 +42,7 @@ Notifications.setNotificationHandler({
 export default function App() {
   const scheme = useColorScheme();
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [sound, setSound] = useState(null);
 
   // Ensure default themes are defined before using them
   const basePaperDefault = PaperDefaultTheme || {};
@@ -187,34 +193,136 @@ export default function App() {
     const data = notification.request.content.data;
     
     try {
+      // Start Android service for background audio
+      if (Platform.OS === 'android') {
+        AndroidService.startService();
+      }
+
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
         staysActiveInBackground: true,
         shouldDuckAndroid: true,
         playThroughEarpieceAndroid: false,
+        interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_MIX_WITH_OTHERS,
+        interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DUCK_OTHERS,
       });
 
-      if (data.selectedSound) {
-        const soundFile = defaultSounds.find(s => s.name === data.selectedSound)?.file;
-        if (soundFile) {
-          const { sound } = await Audio.Sound.createAsync(soundFile, { shouldPlay: true });
-          await sound.playAsync();
-        }
-      } else if (data.audioUri) {
-        const { sound } = await Audio.Sound.createAsync({ uri: data.audioUri }, { shouldPlay: true });
-        await sound.playAsync();
-      }
+      await playReminderSound(data.audioUri, data.selectedSound);
     } catch (error) {
       console.error('Error playing notification sound:', error);
+    }
+  };
+
+  const playReminderSound = async (uri, selectedSound) => {
+    try {
+      await stopPlayingSound();
+      
+      let soundSource;
+      if (uri && uri.startsWith('file:')) {
+        soundSource = { uri };
+      } else if (selectedSound) {
+        const defaultSound = defaultSounds.find(s => s.name === selectedSound);
+        if (defaultSound) {
+          soundSource = defaultSound.file;
+        }
+      }
+
+      if (!soundSource) {
+        console.error('Sound source not found');
+        return;
+      }
+
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        soundSource,
+        { shouldPlay: true, volume: 1.0 }
+      );
+      setSound(newSound);
+      
+      // Add completion handler
+      newSound.setOnPlaybackStatusUpdate(async (status) => {
+        if (status.didJustFinish) {
+          await stopPlayingSound();
+          if (Platform.OS === 'android') {
+            //AndroidService.stopService();
+            await AndroidService.stopService();            
+          }
+        }
+      });
+      
+      await newSound.playAsync();
+    } catch (error) {
+      console.error('Error playing sound:', error);
+    }
+  };
+
+  const stopPlayingSound = async () => {
+    if (sound) {
+      await sound.stopAsync();
+      await sound.unloadAsync();
+      setSound(null);
     }
   };
 
   const handleNotificationResponse = async (response) => {
     // Handle notification interaction
     const data = response.notification.request.content.data;
-    if (data.reminderId) {
-      // Navigate to reminder details or handle snooze/stop
+    const actionId = response.actionIdentifier;
+
+    if (actionId === 'SNOOZE') {
+      await handleSnooze(data.reminderId);
+    } else if (actionId === 'STOP') {
+      await handleStop(data.reminderId);
+    }
+  };
+
+  const handleSnooze = async (reminderId) => {
+    try {
+      const reminder = await StorageService.getReminder(reminderId);
+      if (!reminder) return;
+
+      // Cancel current notification
+      if (reminder.notificationId) {
+        await Notifications.cancelScheduledNotificationAsync(reminder.notificationId);
+      }
+
+      // Stop current sound
+      await stopPlayingSound();
+
+      // Schedule new notification 15 minutes later
+      const newDate = new Date();
+      newDate.setMinutes(newDate.getMinutes() + 15);
+      
+      const notificationId = await NotificationService.scheduleNotification({
+        ...reminder,
+        date: newDate.toISOString(),
+      });
+      
+      reminder.notificationId = notificationId;
+      await StorageService.updateReminder(reminder);
+    } catch (error) {
+      console.error('Error snoozing reminder:', error);
+    }
+  };
+
+  const handleStop = async (reminderId) => {
+    try {
+      const reminder = await StorageService.getReminder(reminderId);
+      if (!reminder) return;
+
+      // Cancel current notification
+      if (reminder.notificationId) {
+        await Notifications.cancelScheduledNotificationAsync(reminder.notificationId);
+      }
+
+      // Stop current sound
+      await stopPlayingSound();
+      
+      // Update reminder to mark it as completed
+      reminder.completed = true;
+      await StorageService.updateReminder(reminder);
+    } catch (error) {
+      console.error('Error stopping reminder:', error);
     }
   };
 
@@ -233,6 +341,10 @@ export default function App() {
     };
     
     setupApp();
+    
+    // Register notification listeners
+    const notificationReceivedSubscription = Notifications.addNotificationReceivedListener(handleNotification);
+    const notificationResponseSubscription = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
     
     const subscription = AppState.addEventListener('change', async (state) => {
       if (state === 'active') {
@@ -255,10 +367,14 @@ export default function App() {
 
     return () => {
       subscription.remove();
+      notificationReceivedSubscription.remove();
+      notificationResponseSubscription.remove();
       // Cleanup service on app unmount
       if (Platform.OS === 'android') {
         AndroidService.stopService();
       }
+      // Clean up sound
+      stopPlayingSound();
     };
   }, []);
 

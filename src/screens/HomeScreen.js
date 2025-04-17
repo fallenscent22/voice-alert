@@ -1,22 +1,86 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, FlatList } from 'react-native';
-import { Text, Card, FAB } from 'react-native-paper';
-import { useNavigation } from '@react-navigation/native';
+import { Text, Card, FAB, Button, Portal, Modal } from 'react-native-paper';
+import { useNavigation, useTheme, useIsFocused } from '@react-navigation/native';
 import { StorageService } from '../services/storage';
-import { useIsFocused } from '@react-navigation/native';
-import { useTheme } from '@react-navigation/native';
+import { NotificationService } from '../services/notifications';
+import { Audio } from 'expo-av';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
   const [reminders, setReminders] = useState([]);
+  const [currentReminder, setCurrentReminder] = useState(null);
+  const [visible, setVisible] = useState(false);
+  const [sound, setSound] = useState(null);
   const isFocused = useIsFocused();
   const theme = useTheme();
 
   useEffect(() => {
     if (isFocused) {
-      loadReminders(); // fetch updated list whenever screen is focused
+      loadReminders();
     }
   }, [isFocused]);
+
+  useEffect(() => {
+    const handleNotification = async (reminderId) => {
+      try {
+        const reminder = await StorageService.getReminder(reminderId);
+        console.log('Playing sound from URI:', reminder.audioUri); // Log here
+        setCurrentReminder(reminder);
+        setVisible(true);
+
+        if (reminder.audioUri) {
+          // Stop any currently playing sound
+          if (sound) {
+            await sound.stopAsync();
+            await sound.unloadAsync();
+          }
+
+          // Request audio permissions
+          const { status } = await Audio.requestPermissionsAsync();
+          if (status !== 'granted') {
+            console.warn('Audio permissions not granted');
+            return;
+          }
+
+          // Load and play the new sound
+          const { sound: newSound } = await Audio.Sound.createAsync(
+            { uri: reminder.audioUri },
+            { shouldPlay: true }
+          );
+          setSound(newSound);
+        }
+      } catch (error) {
+        console.error('Error handling notification sound:', error);
+      }
+    };
+
+    NotificationService.notificationEmitter.on('showNotification', handleNotification);
+
+    return () => {
+      NotificationService.notificationEmitter.off('showNotification', handleNotification);
+    };
+  }, [sound]);
+
+  const handleSnooze = async () => {
+    if (currentReminder) {
+      const snoozeDate = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes later
+      await NotificationService.scheduleNotification({
+        ...currentReminder,
+        date: snoozeDate,
+      });
+    }
+    handleStop();
+  };
+
+  const handleStop = async () => {
+    if (sound) {
+      await sound.stopAsync();
+      await sound.unloadAsync();
+      setSound(null);
+    }
+    setVisible(false);
+  };
 
   const loadReminders = async () => {
     try {
@@ -32,7 +96,7 @@ const HomeScreen = () => {
       <FlatList
         data={reminders}
         renderItem={({ item }) => (
-          <Card 
+          <Card
             style={[styles.reminderCard, { backgroundColor: theme.colors.surface }]}
             onPress={() => navigation.navigate('Record', { reminder: item })}
           >
@@ -60,6 +124,22 @@ const HomeScreen = () => {
         color={theme.colors.buttonText}
         onPress={() => navigation.navigate('Record')}
       />
+
+      {/* Notification Modal */}
+      <Portal>
+        <Modal visible={visible} onDismiss={handleStop} contentContainerStyle={styles.modal}>
+          <Text style={styles.modalTitle}>{currentReminder?.title}</Text>
+          <Text style={styles.modalBody}>Time for your reminder!</Text>
+          <View style={styles.modalActions}>
+            <Button mode="contained" onPress={handleSnooze} style={styles.snoozeButton}>
+              Snooze
+            </Button>
+            <Button mode="contained" onPress={handleStop} style={styles.stopButton}>
+              Stop
+            </Button>
+          </View>
+        </Modal>
+      </Portal>
     </View>
   );
 };
@@ -84,6 +164,33 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderRadius: 28,
   },
+  modal: {
+    backgroundColor: 'white',
+    padding: 20,
+    margin: 20,
+    borderRadius: 12,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  modalBody: {
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  snoozeButton: {
+    flex: 1,
+    marginRight: 8,
+  },
+  stopButton: {
+    flex: 1,
+    marginLeft: 8,
+  },
 });
 
-export default HomeScreen; 
+export default HomeScreen;

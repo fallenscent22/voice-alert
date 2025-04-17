@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { View, StyleSheet, FlatList, Alert, AppState, Platform } from 'react-native';
-import { Text, Button, Card, IconButton, Portal, Dialog, Paragraph } from 'react-native-paper';
+import { Text, Button, Card, IconButton, Portal, Dialog, Paragraph, Modal } from 'react-native-paper';
 import { useIsFocused } from '@react-navigation/native';
 import { StorageService } from '../services/storage';
 import * as Notifications from 'expo-notifications';
@@ -8,14 +8,7 @@ import { Audio } from 'expo-av';
 import { defaultSounds } from '../constants/sounds';
 import { useTheme } from '@react-navigation/native';
 import AndroidService from '../services/AndroidService';
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+import { NotificationService } from '../services/notifications';
 
 export default function RemindersScreen({ navigation }) {
   const isFocused = useIsFocused();
@@ -31,129 +24,30 @@ export default function RemindersScreen({ navigation }) {
   }, [isFocused]);
 
   useEffect(() => {
-    const subscription = Notifications.addNotificationReceivedListener(handleNotification);
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+    const handleShowNotification = async (reminderId) => {
+      const reminder = await StorageService.getReminder(reminderId);
+      setCurrentReminder(reminder);
+      setVisible(true);
+
+      if (reminder.audioUri) {
+        const { sound: newSound } = await Audio.Sound.createAsync(
+          { uri: reminder.audioUri },
+          { shouldPlay: true }
+        );
+        setSound(newSound);
+      }
+    };
+
+    NotificationService.notificationEmitter.on('showNotification', handleShowNotification);
 
     return () => {
-      subscription.remove();
-      responseSubscription.remove();
-      if (sound) {
-        sound.stopAsync();
-        sound.unloadAsync();
-      }
+      NotificationService.notificationEmitter.off('showNotification', handleShowNotification);
     };
   }, []);
 
   const loadReminders = async () => {
     const data = await StorageService.getReminders();
     setReminders(data || []);
-  };
-
-  const handleNotification = async (notification) => {
-    const reminderId = notification.request.content.data.reminderId;
-    const reminder = await StorageService.getReminder(reminderId);
-    if (reminder) {
-      setCurrentReminder(reminder);
-      setVisible(true);
-      await playReminderSound(reminder.audioUri, reminder.selectedSound);
-    }
-  };
-
-  const handleNotificationResponse = async (response) => {
-    const data = response.notification.request.content.data;
-    const actionId = response.actionIdentifier;
-
-    if (actionId === 'SNOOZE') {
-      await handleSnooze(data.reminderId);
-    } else if (actionId === 'STOP') {
-      await handleStop(data.reminderId);
-    }
-  };
-
-  const handleSnooze = async (reminderId) => {
-    try {
-      const reminder = await StorageService.getReminder(reminderId);
-      if (!reminder) return;
-
-      // Cancel current notification
-      if (reminder.notificationId) {
-        await Notifications.cancelScheduledNotificationAsync(reminder.notificationId);
-      }
-
-      // Schedule new notification 15 minutes later
-      const newDate = new Date(Date.now() + 15 * 60 * 1000);
-      const newReminder = {
-        ...reminder,
-        date: newDate.getTime(),
-      };
-
-      const notificationId = await scheduleNotification(newReminder);
-      if (notificationId) {
-        newReminder.notificationId = notificationId;
-        await StorageService.updateReminder(newReminder);
-        await stopPlayingSound();
-      }
-    } catch (error) {
-      console.error('Error snoozing reminder:', error);
-    }
-  };
-
-  const handleStop = async (reminderId) => {
-    try {
-      const reminder = await StorageService.getReminder(reminderId);
-      if (reminder?.notificationId) {
-        await Notifications.cancelScheduledNotificationAsync(reminder.notificationId);
-      }
-      await stopPlayingSound();
-    } catch (error) {
-      console.error('Error stopping reminder:', error);
-    }
-  };
-
-  const scheduleNotification = async (reminder) => {
-    try {
-      if (reminder.notificationId) {
-        await Notifications.cancelScheduledNotificationAsync(reminder.notificationId);
-      }
-
-      const triggerDate = new Date(reminder.date);
-      if (triggerDate <= new Date()) {
-        Alert.alert('Invalid Date', 'Please select a future date and time.');
-        return false;
-      }
-
-      const notificationId = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: reminder.title,
-          body: 'Time for your reminder!',
-          data: { 
-            reminderId: reminder.id,
-            audioUri: reminder.audioUri,
-            selectedSound: reminder.selectedSound
-          },
-          sound: true,
-          priority: 'max',
-          categoryIdentifier: 'reminder',
-          // Android specific
-          android: {
-            channelId: 'reminders',
-            priority: 'max',
-            sticky: true,
-            fullScreenIntent: true, // This makes it appear on screen
-          },
-        },
-        trigger: {
-          date: triggerDate,
-          seconds: reminder.isRecurring ? 24 * 60 * 60 : undefined,
-        },
-      });
-
-      return notificationId;
-    } catch (error) {
-      console.error('Error scheduling notification:', error);
-      Alert.alert('Error', 'Failed to schedule notification');
-      return false;
-    }
   };
 
   const stopPlayingSound = async () => {
@@ -215,6 +109,27 @@ export default function RemindersScreen({ navigation }) {
     loadReminders();
   };
 
+  const handleSnooze = async () => {
+    if (currentReminder) {
+      const snoozeDate = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes later
+      await NotificationService.scheduleNotification({
+        ...currentReminder,
+        date: snoozeDate,
+      });
+      Alert.alert('Snoozed', 'Reminder snoozed for 15 minutes.');
+    }
+    handleStop();
+  };
+
+  const handleStop = async () => {
+    if (sound) {
+      await sound.stopAsync();
+      await sound.unloadAsync();
+      setSound(null);
+    }
+    setVisible(false);
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <FlatList
@@ -250,34 +165,18 @@ export default function RemindersScreen({ navigation }) {
       />
 
       <Portal>
-        <Dialog
-          visible={visible}
-          onDismiss={() => setVisible(false)}
-          style={{ backgroundColor: theme.colors.surface }}
-        >
-          <Dialog.Title style={{ color: theme.colors.text }}>
-            {currentReminder?.title}
-          </Dialog.Title>
-          <Dialog.Content>
-            <Paragraph style={{ color: theme.colors.text }}>
-              It's time for your reminder!
-            </Paragraph>
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button
-              onPress={() => handleSnooze(currentReminder.id)}
-              textColor={theme.colors.primary}
-            >
-              Snooze 15 mins
+        <Modal visible={visible} onDismiss={handleStop} contentContainerStyle={styles.modal}>
+          <Text style={styles.modalTitle}>{currentReminder?.title}</Text>
+          <Text style={styles.modalBody}>Time for your reminder!</Text>
+          <View style={styles.modalActions}>
+            <Button mode="contained" onPress={handleSnooze} style={styles.snoozeButton}>
+              Snooze
             </Button>
-            <Button
-              onPress={() => handleStop(currentReminder.id)}
-              textColor={theme.colors.primary}
-            >
+            <Button mode="contained" onPress={handleStop} style={styles.stopButton}>
               Stop
             </Button>
-          </Dialog.Actions>
-        </Dialog>
+          </View>
+        </Modal>
       </Portal>
     </View>
   );
@@ -289,42 +188,34 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   card: {
-    marginVertical: 8,
-    elevation: 4,
+    marginBottom: 16,
+    elevation: 2,
+  },
+  modal: {
+    backgroundColor: 'white',
+    padding: 20,
+    margin: 20,
     borderRadius: 12,
   },
-  cardContent: {
-    padding: 16,
-  },
-  title: {
+  modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 8,
   },
-  date: {
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 8,
-  },
-  button: {
-    marginLeft: 8,
-  },
-  dialog: {
-    borderRadius: 12,
-    padding: 20,
-  },
-  dialogTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  modalBody: {
+    fontSize: 16,
     marginBottom: 16,
   },
-  dialogActions: {
-    marginTop: 16,
+  modalActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  snoozeButton: {
+    flex: 1,
+    marginRight: 8,
+  },
+  stopButton: {
+    flex: 1,
+    marginLeft: 8,
   },
 });

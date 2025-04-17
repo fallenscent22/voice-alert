@@ -42,45 +42,71 @@ const RecordScreen = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editingReminderId, setEditingReminderId] = useState(null);
 
-// Stop & unload sound helper
-useEffect(() => {
-  if (route.params?.reminder) {
-    const { reminder } = route.params;
-    setTitle(reminder.title);
-    setDate(new Date(reminder.date));
-    setIsRecurring(reminder.isRecurring);
-    setAudioUri(reminder.audioUri);
-    setSelectedSound(reminder.selectedSound ? { name: reminder.selectedSound, type: 'default' } : null);
-    setIsEditing(true);
-    setEditingReminderId(reminder.id);
-  }
+  const soundCache = new Map();
 
-  const unsubscribe = navigation.addListener('beforeRemove', () => {
-    cleanup();
-  });
+  useEffect(() => {
+    const configureAudio = async () => {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+        interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_MIX_WITH_OTHERS,
+        interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DUCK_OTHERS,
+      });
+    };
+    
+    configureAudio();
+    
+    return () => {
+      soundCache.forEach(async (sound) => {
+        try {
+          await sound.unloadAsync();
+        } catch (error) {
+          console.error('Error unloading sound:', error);
+        }
+      });
+      soundCache.clear();
+    };
+  }, []);
 
-  return () => {
-    unsubscribe();
-    cleanup();
+  useEffect(() => {
+    if (route.params?.reminder) {
+      const { reminder } = route.params;
+      setTitle(reminder.title);
+      setDate(new Date(reminder.date));
+      setIsRecurring(reminder.isRecurring);
+      setAudioUri(reminder.audioUri);
+      setSelectedSound(reminder.selectedSound ? { name: reminder.selectedSound, type: 'default' } : null);
+      setIsEditing(true);
+      setEditingReminderId(reminder.id);
+    }
+
+    const unsubscribe = navigation.addListener('beforeRemove', () => {
+      cleanup();
+    });
+
+    return () => {
+      unsubscribe();
+      cleanup();
+    };
+  }, []);
+
+  const cleanup = async () => {
+    try {
+      if (recording) {
+        await recording.stopAndUnloadAsync();
+        setRecording(null);
+      }
+      if (playingSound) {
+        await playingSound.stopAsync();
+        setPlayingSound(null);
+      }
+    } catch (error) {
+      console.error("Cleanup error:", error);
+    }
   };
-}, []);
-
-const cleanup = async () => {
-  try {
-    if (recording) {
-      await recording.stopAndUnloadAsync();
-      setRecording(null);
-    }
-    if (playingSound) {
-      await playingSound.stopAsync();
-      await playingSound.unloadAsync();
-      setPlayingSound(null);
-    }
-  } catch (error) {
-    console.error("Cleanup error:", error);
-  }
-};
-
 
   const startRecording = async () => {
     try {
@@ -165,7 +191,6 @@ const cleanup = async () => {
 
   const generateUniqueId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-
   const saveReminder = async () => {
     if (!title || !date || (!audioUri && !selectedSound)) {
       Alert.alert('Error', 'Please fill in all required fields');
@@ -200,50 +225,53 @@ const cleanup = async () => {
 
   const selectDefaultSound = async (soundFile, soundName) => {
     if (isRecording) return;
+    
     try {
       await cleanup();
       
-      // Configure audio mode first
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-      });
-      
-      if (Platform.OS === 'android') {
-        AndroidService.startService();
+      let sound;
+      if (soundCache.has(soundName)) {
+        sound = soundCache.get(soundName);
+        await sound.setPositionAsync(0);
+      } else {
+        const { sound: newSound } = await Audio.Sound.createAsync(
+          soundFile,
+          {
+            shouldPlay: false,
+            volume: 1.0,
+            progressUpdateIntervalMillis: 50,
+            positionMillis: 0,
+            rate: 1.0,
+            shouldCorrectPitch: true,
+          },
+          null,
+          true
+        );
+        sound = newSound;
+        soundCache.set(soundName, sound);
       }
-      
-      const { sound } = await Audio.Sound.createAsync(
-        soundFile,
-        { shouldPlay: true, volume: 1.0 }
-      );
+
+      await sound.playAsync();
       setPlayingSound(sound);
       
-      sound.setOnPlaybackStatusUpdate(async (status) => {
-        if (status.didJustFinish) {
-          await cleanup();
-          if (Platform.OS === 'android') {
-            AndroidService.stopService();
-          }
-        }
-      });
-      
-      await sound.playAsync();
-
       setSelectedSound({
         type: 'default',
         name: soundName,
         file: soundFile,
       });
+
+      sound.setOnPlaybackStatusUpdate(async (status) => {
+        if (status.didJustFinish) {
+          await sound.stopAsync();
+          setPlayingSound(null);
+        }
+      });
+      
     } catch (error) {
       console.error('Sound playback error:', error);
       Alert.alert('Error', 'Failed to play sound');
     }
   };
-
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>

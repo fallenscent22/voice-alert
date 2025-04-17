@@ -87,7 +87,13 @@ const storage = Platform.OS === 'web' ? webStorage : AsyncStorage;
   async deleteReminder(id) {
     try {
       const reminders = await this.getReminders();
-      const updatedReminders = reminders.filter(reminder => reminder.id !== id);
+      const reminderToDelete = reminders.find((reminder) => reminder.id === id);
+
+      if (reminderToDelete?.notificationId) {
+        await Notifications.cancelScheduledNotificationAsync(reminderToDelete.notificationId);
+      }
+
+      const updatedReminders = reminders.filter((reminder) => reminder.id !== id);
       await storage.setItem(REMINDERS_KEY, JSON.stringify(updatedReminders));
     } catch (error) {
       console.error('Error deleting reminder:', error);
