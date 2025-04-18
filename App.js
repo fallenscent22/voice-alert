@@ -1,3 +1,5 @@
+// Description: Main entry point for the React Native application, setting up navigation, theming, and notification handling.
+// Import necessary libraries and components
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer, DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationDefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -101,6 +103,7 @@ export default function App() {
     },
     dark: true,
   };
+  
 
   useEffect(() => {
     // Load initial theme
@@ -129,6 +132,12 @@ export default function App() {
   useEffect(() => {
     const configureAudio = async () => {
       try {
+        const { status } = await Audio.requestPermissionsAsync();
+        if (status !== 'granted') {
+          console.warn('Audio permissions not granted');
+          return;
+        }
+
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: true,
           staysActiveInBackground: true,
@@ -197,20 +206,40 @@ export default function App() {
       if (Platform.OS === 'android') {
         AndroidService.startService();
       }
+     let soundSource;
+    if (data.audioUri) {
+      soundSource = { uri: data.audioUri };
+    } else if (data.selectedSound) {
+      const defaultSound = defaultSounds.find(s => s.name === data.selectedSound);
+      if (defaultSound) soundSource = defaultSound.file;
+    }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-        interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_MIX_WITH_OTHERS,
-        interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DUCK_OTHERS,
-      });
+    if (!soundSource) return;
 
-      await playReminderSound(data.audioUri, data.selectedSound);
-    } catch (error) {
-      console.error('Error playing notification sound:', error);
+    // Stop existing sound
+    if (sound) {
+      await sound.stopAsync();
+      await sound.unloadAsync();
+      setSound(null);
+    }
+
+    // Play new sound
+    const { sound: newSound } = await Audio.Sound.createAsync(
+      soundSource,
+      { shouldPlay: true }
+    );
+    setSound(newSound);
+
+    newSound.setOnPlaybackStatusUpdate(async (status) => {
+      if (status.didJustFinish) {
+        await newSound.unloadAsync();
+        setSound(null);
+        if (Platform.OS === 'android') AndroidService.stopService();
+      }
+    });
+
+  } catch (error) {
+    console.error('Notification sound error:', error);
     }
   };
 
@@ -336,8 +365,10 @@ export default function App() {
       
       // Initialize Android service for background audio
       if (Platform.OS === 'android') {
-        AndroidService.startService();
+        await AndroidService.startService();
       }
+      // Listen for notification responses
+      Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
     };
     
     setupApp();
@@ -378,12 +409,6 @@ export default function App() {
     };
   }, []);
 
-  // Safety check before using theme.colors
-  if (!theme || !theme.colors) {
-    console.error('Theme is undefined or missing colors:', theme);
-    return null; // or a fallback UI
-  }
-
   return (
     <PaperProvider theme={theme}>
       <NavigationContainer theme={theme}>
@@ -410,4 +435,4 @@ export default function App() {
       </NavigationContainer>
     </PaperProvider>
   );
-}
+};

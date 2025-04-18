@@ -19,27 +19,27 @@ import com.facebook.soloader.SoLoader
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
 import com.sassycoders.vocalreminder.AudioServicePackage
+import com.sassycoders.vocalreminder.BuildConfig
 
 class MainApplication : Application(), ReactApplication {
 
-  override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
-        this,
-        object : DefaultReactNativeHost(this) {
-          override fun getPackages(): List<ReactPackage> {
-            val packages = PackageList(this).packages.toMutableList()
-            // Add our custom package
-            packages.add(AudioServicePackage())
-            return packages
-          }
+  private val reactNativeHost: ReactNativeHost = object : ReactNativeHost(this) {
+    override fun getUseDeveloperSupport(): Boolean {
+      return BuildConfig.DEBUG
+    }
 
-          override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
+    override fun getPackages(): List<ReactPackage> {
+      return PackageList(this).packages
+    }
 
-          override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
+    override fun getJSMainModuleName(): String {
+      return "index"
+    }
+  }
 
-          override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
-          override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
-      }
-  )
+  override fun getReactNativeHost(): ReactNativeHost {
+    return reactNativeHost
+  }
 
   override val reactHost: ReactHost
     get() = getDefaultReactHost(this.applicationContext, reactNativeHost)

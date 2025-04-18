@@ -15,7 +15,7 @@
     "@react-navigation/bottom-tabs": "^6.6.1",
     "@react-navigation/native": "^6.1.18",
     "@react-navigation/native-stack": "^6.9.17",
-    "AsyncStorage": "^0.1.5",
+    "eslint": "^8.57.1",
     "expo": "~50.0.5",
     "expo-av": "~13.10.4",
     "expo-dev-client": "~3.3.12",

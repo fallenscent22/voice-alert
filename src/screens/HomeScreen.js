@@ -5,6 +5,7 @@ import { useNavigation, useTheme, useIsFocused } from '@react-navigation/native'
 import { StorageService } from '../services/storage';
 import { NotificationService } from '../services/notifications';
 import { Audio } from 'expo-av';
+import { defaultSounds } from '../constants/sounds';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
@@ -25,31 +26,43 @@ const HomeScreen = () => {
     const handleNotification = async (reminderId) => {
       try {
         const reminder = await StorageService.getReminder(reminderId);
-        console.log('Playing sound from URI:', reminder.audioUri); // Log here
+        console.log('Playing sound from URI:', reminder.audioUri);
         setCurrentReminder(reminder);
         setVisible(true);
 
+        let soundSource = null;
         if (reminder.audioUri) {
-          // Stop any currently playing sound
-          if (sound) {
-            await sound.stopAsync();
-            await sound.unloadAsync();
+          soundSource = { uri: reminder.audioUri };
+        } else if (reminder.selectedSound) {
+          const defaultSound = defaultSounds.find(s => s.name === reminder.selectedSound);
+          if (defaultSound) {
+            soundSource = defaultSound.file; // Use require() from defaultSounds
           }
-
-          // Request audio permissions
-          const { status } = await Audio.requestPermissionsAsync();
-          if (status !== 'granted') {
-            console.warn('Audio permissions not granted');
-            return;
-          }
-
-          // Load and play the new sound
-          const { sound: newSound } = await Audio.Sound.createAsync(
-            { uri: reminder.audioUri },
-            { shouldPlay: true }
-          );
-          setSound(newSound);
         }
+
+        if (!soundSource) {
+          console.warn('No sound source available');
+          return;
+        }
+
+        if (sound) {
+          await sound.stopAsync();
+          await sound.unloadAsync();
+        }
+
+        // Request audio permissions
+        const { status } = await Audio.requestPermissionsAsync();
+        if (status !== 'granted') {
+          console.warn('Audio permissions not granted');
+          return;
+        }
+
+        // Load and play the new sound
+        const { sound: newSound } = await Audio.Sound.createAsync(
+          soundSource,
+          { shouldPlay: true }
+        );
+        setSound(newSound);
       } catch (error) {
         console.error('Error handling notification sound:', error);
       }
@@ -65,10 +78,16 @@ const HomeScreen = () => {
   const handleSnooze = async () => {
     if (currentReminder) {
       const snoozeDate = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes later
-      await NotificationService.scheduleNotification({
+      const notificationId = await NotificationService.scheduleNotification({
         ...currentReminder,
         date: snoozeDate,
       });
+      const updatedReminder = {
+        ...currentReminder,
+        notificationId,
+        date: snoozeDate.getTime(),
+      };
+      await StorageService.saveReminder(updatedReminder);
     }
     handleStop();
   };

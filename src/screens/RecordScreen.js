@@ -48,12 +48,11 @@ const RecordScreen = () => {
     const configureAudio = async () => {
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
         interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_MIX_WITH_OTHERS,
-        interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DUCK_OTHERS,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DO_NOT_MIX,
+        staysActiveInBackground: true,
       });
     };
     
@@ -112,7 +111,7 @@ const RecordScreen = () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow microphone access to record reminders.');
+        Alert.alert('Microphone access required');
         return;
       }
 
@@ -203,11 +202,13 @@ const RecordScreen = () => {
       const reminder = {
         id: editingReminderId || generateUniqueId(),
         title,
-        date: date.getTime(), // Store as timestamp instead of Date object
+        date: date.getTime(),
         isRecurring,
-        audioUri: audioUri,
-        selectedSound: selectedSound?.name || null,
+        audioUri: audioUri, // Recorded audio URI
+        selectedSound: selectedSound?.name || null, // Save the sound name
       };
+
+      console.log('Saving reminder with data:', reminder);
 
       const notificationId = await scheduleNotification(reminder);
       if (!notificationId) return;
@@ -270,6 +271,48 @@ const RecordScreen = () => {
     } catch (error) {
       console.error('Sound playback error:', error);
       Alert.alert('Error', 'Failed to play sound');
+    }
+  };
+
+  const playReminderSound = async (uri, selectedSound) => {
+    try {
+      await stopPlayingSound();
+  
+      let soundSource;
+      if (uri && uri.startsWith('file:')) {
+        soundSource = { uri };
+      } else if (selectedSound) {
+        const defaultSound = defaultSounds.find(s => s.name === selectedSound);
+        if (defaultSound) {
+          soundSource = defaultSound.file;
+        }
+      }
+  
+      if (!soundSource) {
+        console.error('Sound source not found');
+        return;
+      }
+  
+      console.log('Playing sound from source:', soundSource);
+  
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        soundSource,
+        { shouldPlay: true, volume: 1.0 }
+      );
+      setSound(newSound);
+  
+      newSound.setOnPlaybackStatusUpdate(async (status) => {
+        if (status.didJustFinish) {
+          await stopPlayingSound();
+          if (Platform.OS === 'android') {
+            AndroidService.stopService();
+          }
+        }
+      });
+  
+      await newSound.playAsync();
+    } catch (error) {
+      console.error('Error playing sound:', error);
     }
   };
 
@@ -452,4 +495,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default RecordScreen; 
+export default RecordScreen;

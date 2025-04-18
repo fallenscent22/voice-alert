@@ -6,6 +6,7 @@ import { Audio } from 'expo-av';
 import { defaultSounds } from '../constants/sounds';
 import AndroidService from './AndroidService';
 import mitt from 'mitt'; // ✅ Replaced 'events' with 'mitt'
+import { playReminderSound } from '../screens/RecordScreen';
 
 const notificationEmitter = mitt(); // ✅ mitt instance
 
@@ -27,7 +28,7 @@ Notifications.setNotificationHandler({
     }
 
     let notificationContent = {
-      title: data.title,
+      title: date.title,
       body: 'Time for your reminder!',
       data: {
         reminderId: data.reminderId,
@@ -95,14 +96,9 @@ export const NotificationService = {
           selectedSound: reminder.selectedSound,
         },
         priority: 'high',
-        categoryIdentifier: 'reminder',
+        //sound: reminder.selectedSound || 'default', // Use the selected sound or default
+        sound:false, //disable system sound
       };
-
-      if (Platform.OS === 'android') {
-        notificationContent.sound = 'sound';
-      } else if (reminder.selectedSound) {
-        notificationContent.sound = reminder.selectedSound.toLowerCase().replace(/\s+/g, '_');
-      }
 
       const notificationId = await Notifications.scheduleNotificationAsync({
         content: notificationContent,
@@ -111,6 +107,17 @@ export const NotificationService = {
           seconds: reminder.isRecurring ? 24 * 60 * 60 : undefined, // Repeat every 24 hours
         },
       });
+
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('reminders', {
+          name: 'Reminders',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#FF231F7C',
+          sound: 'default', // Ensure sound is enabled
+          enableVibrate: true,
+        });
+      }
 
       return notificationId;
     } catch (error) {
@@ -166,3 +173,28 @@ Notifications.addNotificationReceivedListener(async (notification) => {
     await playReminderSound(data.audioUri, data.selectedSound);
   }
 });
+
+if (Platform.OS === 'android') {
+  await Notifications.setNotificationChannelAsync('reminders', {
+    name: 'Reminders',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#FF231F7C',
+    sound: 'default', // Ensure sound is enabled
+    enableVibrate: true,
+  });
+}
+
+Notifications.addNotificationReceivedListener(async (notification) => {
+  const data = notification.request.content.data;
+  if (data.audioUri || data.selectedSound) {
+    try {
+      await playReminderSound(data.audioUri, data.selectedSound);
+    } catch (error) {
+      console.error('Error playing notification sound:', error);
+    }
+  }
+});
+
+// Call this function once during app initialization
+NotificationService.createNotificationChannel();
