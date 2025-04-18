@@ -11,4 +11,20 @@
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
 
+# Keep MediaPlayer components
+-keep class android.media.MediaPlayer { *; }
+-keepclassmembers class android.media.MediaPlayer { *; }
+-keep class com.sassycoders.vocalreminder.AudioService { *; }
+
+# Keep notification classes
+-keep class android.app.Notification { *; }
+-keep class android.app.NotificationChannel { *; }
+-keep class android.app.NotificationManager { *; }
+
+# Keep service components
+-keep public class * extends android.app.Service
+-keepclassmembers class * extends android.app.Service {
+    public <init>();
+    public void on*();
+}
 # Add any project specific keep options here:

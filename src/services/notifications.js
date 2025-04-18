@@ -1,58 +1,22 @@
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
+import { Platform, NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StorageService } from './storage';
 import { Audio } from 'expo-av';
 import { defaultSounds } from '../constants/sounds';
-import AndroidService from './AndroidService';
-import mitt from 'mitt'; // ✅ Replaced 'events' with 'mitt'
+//import AndroidService from './AndroidService';
+import mitt from 'mitt';
 import { playReminderSound } from '../screens/RecordScreen';
+const { AndroidService } = NativeModules;
 
-const notificationEmitter = mitt(); // ✅ mitt instance
+const notificationEmitter = mitt();
 
 Notifications.setNotificationHandler({
-  handleNotification: async (notification) => {
-    const data = notification.request.content.data;
-
-    if (Platform.OS === 'android') {
-      AndroidService.startService();
-    }
-
-    if (data.reminderId) {
-      await NotificationService.cancelNotification(data.reminderId);
-    }
-
-    const trigger = new Date(data.date);
-    if (trigger <= new Date()) {
-      throw new Error('Cannot schedule notification for past date');
-    }
-
-    let notificationContent = {
-      title: date.title,
-      body: 'Time for your reminder!',
-      data: {
-        reminderId: data.reminderId,
-        audioUri: data.audioUri,
-        selectedSound: data.selectedSound,
-      },
-      priority: 'high',
-      sound: data.selectedSound || 'default', // Use the selected sound or default
-    };
-
-    const notificationId = await Notifications.scheduleNotificationAsync({
-      content: notificationContent,
-      trigger: {
-        date: trigger,
-        seconds: data.isRecurring ? 24 * 60 * 60 : undefined,
-      },
-    });
-
-    if (Platform.OS === 'android') {
-      AndroidService.stopService();
-    }
-
-    return notificationId;
-  },
+  handleNotification: async () => ({
+    shouldShowAlert: false,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
 });
 
 export const NotificationService = {
@@ -68,7 +32,7 @@ export const NotificationService = {
     return finalStatus === 'granted';
   },
 
-  notificationEmitter, // ✅ Exporting mitt instance
+  notificationEmitter,
 
   async scheduleNotification(reminder) {
     try {
@@ -96,15 +60,14 @@ export const NotificationService = {
           selectedSound: reminder.selectedSound,
         },
         priority: 'high',
-        //sound: reminder.selectedSound || 'default', // Use the selected sound or default
-        sound:false, //disable system sound
+        sound: false, // disable system notification sound
       };
 
       const notificationId = await Notifications.scheduleNotificationAsync({
         content: notificationContent,
         trigger: {
           date: trigger,
-          seconds: reminder.isRecurring ? 24 * 60 * 60 : undefined, // Repeat every 24 hours
+          seconds: reminder.isRecurring ? 24 * 60 * 60 : undefined,
         },
       });
 
@@ -114,7 +77,7 @@ export const NotificationService = {
           importance: Notifications.AndroidImportance.MAX,
           vibrationPattern: [0, 250, 250, 250],
           lightColor: '#FF231F7C',
-          sound: 'default', // Ensure sound is enabled
+          sound: 'default',
           enableVibrate: true,
         });
       }
@@ -128,7 +91,7 @@ export const NotificationService = {
 
   async handleNotification(notification) {
     const { reminderId } = notification.request.content.data;
-    notificationEmitter.emit('showNotification', reminderId); // ✅ Emits via mitt
+    this.notificationEmitter.emit('showNotification', reminderId);
   },
 
   async cancelNotification(notificationId) {
@@ -146,55 +109,39 @@ export const NotificationService = {
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#FF231F7C',
-        sound: 'default', // Ensure sound is enabled
+        sound: 'default',
         enableVibrate: true,
       });
     }
   },
 };
 
-// Prevent system UI from showing native alerts (custom handling only)
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: false, // Prevent default notification UI
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
-});
-
-// Listen for notifications
-Notifications.addNotificationReceivedListener((notification) => {
-  NotificationService.handleNotification(notification);
-});
-
+// 👂 Unified Notification Listener
 Notifications.addNotificationReceivedListener(async (notification) => {
   const data = notification.request.content.data;
-  if (data.audioUri || data.selectedSound) {
-    await playReminderSound(data.audioUri, data.selectedSound);
+  
+  // For Android: Use native service
+  if (Platform.OS === 'android') {
+      try {
+          if (data.audioUri) {
+              await Audio.Sound.stopAsync();
+              AndroidService.playSound(data.audioUri);
+          } else if (data.selectedSound) {
+              // Handle default sounds
+              const sound = defaultSounds.find(s => s.name === data.selectedSound);
+              if (sound) {
+                  AndroidService.playSound(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + this.getPackageName() + "/raw/" + sound.name.toLowerCase());
+              }
+          }
+      } catch (error) {
+          console.error('Android sound error:', error);
+      }
+  } else {
+      // iOS handling
+      if (data.audioUri || data.selectedSound) {
+          await playReminderSound(data.audioUri, data.selectedSound);
+      }
   }
 });
-
-if (Platform.OS === 'android') {
-  await Notifications.setNotificationChannelAsync('reminders', {
-    name: 'Reminders',
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-    lightColor: '#FF231F7C',
-    sound: 'default', // Ensure sound is enabled
-    enableVibrate: true,
-  });
-}
-
-Notifications.addNotificationReceivedListener(async (notification) => {
-  const data = notification.request.content.data;
-  if (data.audioUri || data.selectedSound) {
-    try {
-      await playReminderSound(data.audioUri, data.selectedSound);
-    } catch (error) {
-      console.error('Error playing notification sound:', error);
-    }
-  }
-});
-
-// Call this function once during app initialization
+// Call this during app startup
 NotificationService.createNotificationChannel();
